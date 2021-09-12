@@ -27,6 +27,8 @@ use pocketmine\event\server\LowMemoryEvent;
 use pocketmine\scheduler\DumpWorkerMemoryTask;
 use pocketmine\scheduler\GarbageCollectionTask;
 use pocketmine\timings\Timings;
+use pocketmine\utils\AssumptionFailedError;
+use pocketmine\utils\Process;
 use pocketmine\utils\Utils;
 use function arsort;
 use function count;
@@ -38,6 +40,7 @@ use function fwrite;
 use function gc_collect_cycles;
 use function gc_disable;
 use function gc_enable;
+use function gc_mem_caches;
 use function get_class;
 use function get_declared_classes;
 use function implode;
@@ -48,6 +51,7 @@ use function is_object;
 use function is_resource;
 use function is_string;
 use function json_encode;
+use function mb_strtoupper;
 use function min;
 use function mkdir;
 use function preg_match;
@@ -56,7 +60,6 @@ use function round;
 use function spl_object_hash;
 use function sprintf;
 use function strlen;
-use function strtoupper;
 use function substr;
 use const JSON_PRETTY_PRINT;
 use const JSON_UNESCAPED_SLASHES;
@@ -125,7 +128,7 @@ class MemoryManager{
 			if($m <= 0){
 				$defaultMemory = 0;
 			}else{
-				switch(strtoupper($matches[2])){
+				switch(mb_strtoupper($matches[2])){
 					case "K":
 						$defaultMemory = $m / 1024;
 						break;
@@ -225,7 +228,7 @@ class MemoryManager{
 
 		if(($this->memoryLimit > 0 or $this->globalMemoryLimit > 0) and ++$this->checkTicker >= $this->checkRate){
 			$this->checkTicker = 0;
-			$memory = Utils::getMemoryUsage(true);
+			$memory = Process::getAdvancedMemoryUsage();
 			$trigger = false;
 			if($this->memoryLimit > 0 and $memory[0] > $this->memoryLimit){
 				$trigger = 0;
@@ -271,6 +274,7 @@ class MemoryManager{
 		}
 
 		$cycles = gc_collect_cycles();
+		gc_mem_caches();
 
 		Timings::$garbageCollectorTimer->stopTiming();
 
@@ -304,6 +308,7 @@ class MemoryManager{
 	 */
 	public static function dumpMemory($startingObject, string $outputFolder, int $maxNesting, int $maxStringSize, \Logger $logger){
 		$hardLimit = ini_get('memory_limit');
+		if($hardLimit === false) throw new AssumptionFailedError("memory_limit INI directive should always exist");
 		ini_set('memory_limit', '-1');
 		gc_disable();
 
@@ -403,8 +408,8 @@ class MemoryManager{
 					"properties" => []
 				];
 
-				if($reflection->getParentClass()){
-					$info["parent"] = $reflection->getParentClass()->getName();
+				if(($parent = $reflection->getParentClass()) !== false){
+					$info["parent"] = $parent->getName();
 				}
 
 				if(count($reflection->getInterfaceNames()) > 0){
@@ -418,8 +423,12 @@ class MemoryManager{
 						}
 
 						$name = $property->getName();
-						if($reflection !== $original and !$property->isPublic()){
-							$name = $reflection->getName() . ":" . $name;
+						if($reflection !== $original){
+							if($property->isPrivate()){
+								$name = $reflection->getName() . ":" . $name;
+							}else{
+								continue;
+							}
 						}
 						if(!$property->isPublic()){
 							$property->setAccessible(true);

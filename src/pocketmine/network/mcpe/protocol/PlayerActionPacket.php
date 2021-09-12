@@ -43,19 +43,21 @@ class PlayerActionPacket extends DataPacket{
 	public const ACTION_STOP_SPRINT = 10;
 	public const ACTION_START_SNEAK = 11;
 	public const ACTION_STOP_SNEAK = 12;
-	public const ACTION_DIMENSION_CHANGE_REQUEST = 13; //sent when dying in different dimension
+	public const ACTION_CREATIVE_PLAYER_DESTROY_BLOCK = 13;
 	public const ACTION_DIMENSION_CHANGE_ACK = 14; //sent when spawning in a different dimension to tell the server we spawned
 	public const ACTION_START_GLIDE = 15;
 	public const ACTION_STOP_GLIDE = 16;
 	public const ACTION_BUILD_DENIED = 17;
-	public const ACTION_CONTINUE_BREAK = 18;
-
-	public const ACTION_SET_ENCHANTMENT_SEED = 20;
+	public const ACTION_CRACK_BREAK = 18;
+	public const ACTION_CHANGE_SKIN = 19;
+	public const ACTION_SET_ENCHANTMENT_SEED = 20; //no longer used
 	public const ACTION_START_SWIMMING = 21;
 	public const ACTION_STOP_SWIMMING = 22;
 	public const ACTION_START_SPIN_ATTACK = 23;
 	public const ACTION_STOP_SPIN_ATTACK = 24;
 	public const ACTION_INTERACT_BLOCK = 25;
+	public const ACTION_PREDICT_DESTROY_BLOCK = 26;
+	public const ACTION_CONTINUE_DESTROY_BLOCK = 27;
 
 	/** @var int */
 	public $entityRuntimeId;

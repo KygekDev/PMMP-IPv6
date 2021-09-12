@@ -30,6 +30,14 @@ use pocketmine\network\mcpe\NetworkSession;
 class NpcRequestPacket extends DataPacket{
 	public const NETWORK_ID = ProtocolInfo::NPC_REQUEST_PACKET;
 
+	public const REQUEST_SET_ACTIONS = 0;
+	public const REQUEST_EXECUTE_ACTION = 1;
+	public const REQUEST_EXECUTE_CLOSING_COMMANDS = 2;
+	public const REQUEST_SET_NAME = 3;
+	public const REQUEST_SET_SKIN = 4;
+	public const REQUEST_SET_INTERACTION_TEXT = 5;
+	public const REQUEST_EXECUTE_OPENING_COMMANDS = 6;
+
 	/** @var int */
 	public $entityRuntimeId;
 	/** @var int */
@@ -38,12 +46,14 @@ class NpcRequestPacket extends DataPacket{
 	public $commandString;
 	/** @var int */
 	public $actionType;
+	public string $sceneName;
 
 	protected function decodePayload(){
 		$this->entityRuntimeId = $this->getEntityRuntimeId();
 		$this->requestType = $this->getByte();
 		$this->commandString = $this->getString();
 		$this->actionType = $this->getByte();
+		$this->sceneName = $this->getString();
 	}
 
 	protected function encodePayload(){
@@ -51,6 +61,7 @@ class NpcRequestPacket extends DataPacket{
 		$this->putByte($this->requestType);
 		$this->putString($this->commandString);
 		$this->putByte($this->actionType);
+		$this->putString($this->sceneName);
 	}
 
 	public function handle(NetworkSession $session) : bool{

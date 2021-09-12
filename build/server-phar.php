@@ -26,7 +26,6 @@ namespace pocketmine\build\server_phar;
 use pocketmine\utils\Git;
 use function array_map;
 use function count;
-use function defined;
 use function dirname;
 use function file_exists;
 use function getcwd;
@@ -41,6 +40,7 @@ use function rtrim;
 use function sprintf;
 use function str_replace;
 use function unlink;
+use const PHP_EOL;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
@@ -49,7 +49,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
  *
  * @return string[]
  */
-function preg_quote_array(array $strings, string $delim = null) : array{
+function preg_quote_array(array $strings, string $delim) : array{
 	return array_map(function(string $str) use ($delim) : string{ return preg_quote($str, $delim); }, $strings);
 }
 
@@ -129,6 +129,10 @@ function main() : void{
 		echo "Set phar.readonly to 0 with -dphar.readonly=0" . PHP_EOL;
 		exit(1);
 	}
+	if(file_exists(dirname(__DIR__) . '/vendor/phpunit')){
+		echo "Remove Composer dev dependencies before building (composer install --no-dev)" . PHP_EOL;
+		exit(1);
+	}
 
 	$opts = getopt("", ["out:", "git:"]);
 	if(isset($opts["git"])){
@@ -169,6 +173,4 @@ STUB
 	}
 }
 
-if(!defined('pocketmine\_PHPSTAN_ANALYSIS')){
-	main();
-}
+main();

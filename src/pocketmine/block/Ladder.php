@@ -24,6 +24,7 @@ declare(strict_types=1);
 namespace pocketmine\block;
 
 use pocketmine\entity\Entity;
+use pocketmine\entity\Living;
 use pocketmine\item\Item;
 use pocketmine\math\AxisAlignedBB;
 use pocketmine\math\Vector3;
@@ -58,7 +59,7 @@ class Ladder extends Transparent{
 	}
 
 	public function onEntityCollide(Entity $entity) : void{
-		if($entity->asVector3()->floor()->distanceSquared($this) < 1){ //entity coordinates must be inside block
+		if($entity instanceof Living and $entity->asVector3()->floor()->distanceSquared($this) < 1){ //entity coordinates must be inside block
 			$entity->resetFallDistance();
 			$entity->onGround = true;
 		}
@@ -100,7 +101,7 @@ class Ladder extends Transparent{
 			];
 			if(isset($faces[$face])){
 				$this->meta = $faces[$face];
-				$this->getLevel()->setBlock($blockReplace, $this, true, true);
+				$this->getLevelNonNull()->setBlock($blockReplace, $this, true, true);
 
 				return true;
 			}

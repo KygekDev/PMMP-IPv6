@@ -24,6 +24,7 @@ declare(strict_types=1);
 namespace pocketmine\level;
 
 use pocketmine\math\Vector3;
+use pocketmine\utils\AssumptionFailedError;
 use pocketmine\utils\MainLogger;
 use function assert;
 
@@ -72,6 +73,19 @@ class Position extends Vector3{
 	}
 
 	/**
+	 * Returns the position's world if valid. Throws an error if the world is unexpectedly null.
+	 *
+	 * @throws AssumptionFailedError
+	 */
+	public function getLevelNonNull() : Level{
+		$world = $this->getLevel();
+		if($world === null){
+			throw new AssumptionFailedError("Position world is null");
+		}
+		return $world;
+	}
+
+	/**
 	 * Sets the target Level of the position.
 	 *
 	 * @return $this
@@ -112,7 +126,7 @@ class Position extends Vector3{
 	}
 
 	public function __toString(){
-		return "Position(level=" . ($this->isValid() ? $this->getLevel()->getName() : "null") . ",x=" . $this->x . ",y=" . $this->y . ",z=" . $this->z . ")";
+		return "Position(level=" . ($this->isValid() ? $this->getLevelNonNull()->getName() : "null") . ",x=" . $this->x . ",y=" . $this->y . ",z=" . $this->z . ")";
 	}
 
 	public function equals(Vector3 $v) : bool{

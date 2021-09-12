@@ -25,6 +25,7 @@ namespace pocketmine\network\mcpe;
 
 #include <rules/DataPacket.h>
 
+use pocketmine\block\BlockIds;
 use pocketmine\entity\Attribute;
 use pocketmine\entity\Entity;
 use pocketmine\item\Durable;
@@ -32,11 +33,17 @@ use pocketmine\item\Item;
 use pocketmine\item\ItemFactory;
 use pocketmine\item\ItemIds;
 use pocketmine\math\Vector3;
+use pocketmine\nbt\LittleEndianNBTStream;
 use pocketmine\nbt\NetworkLittleEndianNBTStream;
 use pocketmine\nbt\tag\CompoundTag;
 use pocketmine\nbt\tag\IntTag;
+use pocketmine\nbt\tag\NamedTag;
+use pocketmine\network\mcpe\convert\ItemTranslator;
+use pocketmine\network\mcpe\convert\ItemTypeDictionary;
+use pocketmine\network\mcpe\convert\RuntimeBlockMapping;
 use pocketmine\network\mcpe\protocol\types\CommandOriginData;
 use pocketmine\network\mcpe\protocol\types\EntityLink;
+use pocketmine\network\mcpe\protocol\types\GameRuleType;
 use pocketmine\network\mcpe\protocol\types\PersonaPieceTintColor;
 use pocketmine\network\mcpe\protocol\types\PersonaSkinPiece;
 use pocketmine\network\mcpe\protocol\types\SkinAnimation;
@@ -46,6 +53,7 @@ use pocketmine\network\mcpe\protocol\types\StructureEditorData;
 use pocketmine\network\mcpe\protocol\types\StructureSettings;
 use pocketmine\utils\BinaryStream;
 use pocketmine\utils\UUID;
+use function assert;
 use function count;
 use function strlen;
 
@@ -53,6 +61,7 @@ class NetworkBinaryStream extends BinaryStream{
 
 	private const DAMAGE_TAG = "Damage"; //TAG_Int
 	private const DAMAGE_TAG_CONFLICT_RESOLUTION = "___Damage_ProtocolCollisionResolution___";
+	private const PM_META_TAG = "___Meta___";
 
 	public function getString() : string{
 		return $this->get($this->getUnsignedVarInt());
@@ -82,16 +91,17 @@ class NetworkBinaryStream extends BinaryStream{
 
 	public function getSkin() : SkinData{
 		$skinId = $this->getString();
+		$skinPlayFabId = $this->getString();
 		$skinResourcePatch = $this->getString();
 		$skinData = $this->getSkinImage();
 		$animationCount = $this->getLInt();
 		$animations = [];
 		for($i = 0; $i < $animationCount; ++$i){
-			$animations[] = new SkinAnimation(
-				$skinImage = $this->getSkinImage(),
-				$animationType = $this->getLInt(),
-				$animationFrames = $this->getLFloat()
-			);
+			$skinImage = $this->getSkinImage();
+			$animationType = $this->getLInt();
+			$animationFrames = $this->getLFloat();
+			$expressionType = $this->getLInt();
+			$animations[] = new SkinAnimation($skinImage, $animationType, $animationFrames, $expressionType);
 		}
 		$capeData = $this->getSkinImage();
 		$geometryData = $this->getString();
@@ -106,13 +116,12 @@ class NetworkBinaryStream extends BinaryStream{
 		$personaPieceCount = $this->getLInt();
 		$personaPieces = [];
 		for($i = 0; $i < $personaPieceCount; ++$i){
-			$personaPieces[] = new PersonaSkinPiece(
-				$pieceId = $this->getString(),
-				$pieceType = $this->getString(),
-				$packId = $this->getString(),
-				$isDefaultPiece = $this->getBool(),
-				$productId = $this->getString()
-			);
+			$pieceId = $this->getString();
+			$pieceType = $this->getString();
+			$packId = $this->getString();
+			$isDefaultPiece = $this->getBool();
+			$productId = $this->getString();
+			$personaPieces[] = new PersonaSkinPiece($pieceId, $pieceType, $packId, $isDefaultPiece, $productId);
 		}
 		$pieceTintColorCount = $this->getLInt();
 		$pieceTintColors = [];
@@ -129,7 +138,7 @@ class NetworkBinaryStream extends BinaryStream{
 			);
 		}
 
-		return new SkinData($skinId, $skinResourcePatch, $skinData, $animations, $capeData, $geometryData, $animationData, $premium, $persona, $capeOnClassic, $capeId, $fullSkinId, $armSize, $skinColor, $personaPieces, $pieceTintColors);
+		return new SkinData($skinId, $skinPlayFabId, $skinResourcePatch, $skinData, $animations, $capeData, $geometryData, $animationData, $premium, $persona, $capeOnClassic, $capeId, $fullSkinId, $armSize, $skinColor, $personaPieces, $pieceTintColors);
 	}
 
 	/**
@@ -137,6 +146,7 @@ class NetworkBinaryStream extends BinaryStream{
 	 */
 	public function putSkin(SkinData $skin){
 		$this->putString($skin->getSkinId());
+		$this->putString($skin->getPlayFabId());
 		$this->putString($skin->getResourcePatch());
 		$this->putSkinImage($skin->getSkinImage());
 		$this->putLInt(count($skin->getAnimations()));
@@ -144,6 +154,7 @@ class NetworkBinaryStream extends BinaryStream{
 			$this->putSkinImage($animation->getImage());
 			$this->putLInt($animation->getType());
 			$this->putLFloat($animation->getFrames());
+			$this->putLInt($animation->getExpressionType());
 		}
 		$this->putSkinImage($skin->getCapeImage());
 		$this->putString($skin->getGeometryData());
@@ -186,82 +197,134 @@ class NetworkBinaryStream extends BinaryStream{
 		$this->putString($image->getData());
 	}
 
-	public function getSlot() : Item{
-		$id = $this->getVarInt();
-		if($id === 0){
+	public function getItemStackWithoutStackId() : Item{
+		return $this->getItemStack(function() : void{
+			//NOOP
+		});
+	}
+
+	public function putItemStackWithoutStackId(Item $item) : void{
+		$this->putItemStack($item, function() : void{
+			//NOOP
+		});
+	}
+
+	/**
+	 * @phpstan-param \Closure(NetworkBinaryStream) : void $readExtraCrapInTheMiddle
+	 */
+	public function getItemStack(\Closure $readExtraCrapInTheMiddle) : Item{
+		$netId = $this->getVarInt();
+		if($netId === 0){
 			return ItemFactory::get(0, 0, 0);
 		}
 
-		$auxValue = $this->getVarInt();
-		$data = $auxValue >> 8;
-		$cnt = $auxValue & 0xff;
+		$cnt = $this->getLShort();
+		$netData = $this->getUnsignedVarInt();
 
-		$nbtLen = $this->getLShort();
+		[$id, $meta] = ItemTranslator::getInstance()->fromNetworkId($netId, $netData);
 
-		/** @var CompoundTag|null $nbt */
-		$nbt = null;
-		if($nbtLen === 0xffff){
-			$c = $this->getByte();
-			if($c !== 1){
-				throw new \UnexpectedValueException("Unexpected NBT count $c");
+		$readExtraCrapInTheMiddle($this);
+
+		$this->getVarInt();
+
+		$extraData = new NetworkBinaryStream($this->getString());
+		return (static function() use ($extraData, $netId, $id, $meta, $cnt) : Item{
+			$nbtLen = $extraData->getLShort();
+
+			/** @var CompoundTag|null $nbt */
+			$nbt = null;
+			if($nbtLen === 0xffff){
+				$nbtDataVersion = $extraData->getByte();
+				if($nbtDataVersion !== 1){
+					throw new \UnexpectedValueException("Unexpected NBT data version $nbtDataVersion");
+				}
+				$decodedNBT = (new LittleEndianNBTStream())->read($extraData->buffer, false, $extraData->offset, 512);
+				if(!($decodedNBT instanceof CompoundTag)){
+					throw new \UnexpectedValueException("Unexpected root tag type for itemstack");
+				}
+				$nbt = $decodedNBT;
+			}elseif($nbtLen !== 0){
+				throw new \UnexpectedValueException("Unexpected fake NBT length $nbtLen");
 			}
-			$decodedNBT = (new NetworkLittleEndianNBTStream())->read($this->buffer, false, $this->offset, 512);
-			if(!($decodedNBT instanceof CompoundTag)){
-				throw new \UnexpectedValueException("Unexpected root tag type for itemstack");
+
+			//TODO
+			for($i = 0, $canPlaceOn = $extraData->getLInt(); $i < $canPlaceOn; ++$i){
+				$extraData->get($extraData->getLShort());
 			}
-			$nbt = $decodedNBT;
-		}elseif($nbtLen !== 0){
-			throw new \UnexpectedValueException("Unexpected fake NBT length $nbtLen");
-		}
 
-		//TODO
-		for($i = 0, $canPlaceOn = $this->getVarInt(); $i < $canPlaceOn; ++$i){
-			$this->getString();
-		}
+			//TODO
+			for($i = 0, $canDestroy = $extraData->getLInt(); $i < $canDestroy; ++$i){
+				$extraData->get($extraData->getLShort());
+			}
 
-		//TODO
-		for($i = 0, $canDestroy = $this->getVarInt(); $i < $canDestroy; ++$i){
-			$this->getString();
-		}
+			if($netId === ItemTypeDictionary::getInstance()->fromStringId("minecraft:shield")){
+				$extraData->getLLong(); //"blocking tick" (ffs mojang)
+			}
 
-		if($id === ItemIds::SHIELD){
-			$this->getVarLong(); //"blocking tick" (ffs mojang)
-		}
-		if($nbt !== null){
-			if($nbt->hasTag(self::DAMAGE_TAG, IntTag::class)){
-				$data = $nbt->getInt(self::DAMAGE_TAG);
-				$nbt->removeTag(self::DAMAGE_TAG);
-				if($nbt->count() === 0){
-					$nbt = null;
-					goto end;
+			if(!$extraData->feof()){
+				throw new \UnexpectedValueException("Unexpected trailing extradata for network item $netId");
+			}
+
+			if($nbt !== null){
+				if($nbt->hasTag(self::DAMAGE_TAG, IntTag::class)){
+					$meta = $nbt->getInt(self::DAMAGE_TAG);
+					$nbt->removeTag(self::DAMAGE_TAG);
+					if(($conflicted = $nbt->getTag(self::DAMAGE_TAG_CONFLICT_RESOLUTION)) !== null){
+						$nbt->removeTag(self::DAMAGE_TAG_CONFLICT_RESOLUTION);
+						$conflicted->setName(self::DAMAGE_TAG);
+						$nbt->setTag($conflicted);
+					}elseif($nbt->count() === 0){
+						$nbt = null;
+					}
+				}elseif(($metaTag = $nbt->getTag(self::PM_META_TAG)) instanceof IntTag){
+					//TODO HACK: This foul-smelling code ensures that we can correctly deserialize an item when the
+					//client sends it back to us, because as of 1.16.220, blockitems quietly discard their metadata
+					//client-side. Aside from being very annoying, this also breaks various server-side behaviours.
+					$meta = $metaTag->getValue();
+					$nbt->removeTag(self::PM_META_TAG);
+					if($nbt->count() === 0){
+						$nbt = null;
+					}
 				}
 			}
-			if(($conflicted = $nbt->getTag(self::DAMAGE_TAG_CONFLICT_RESOLUTION)) !== null){
-				$nbt->removeTag(self::DAMAGE_TAG_CONFLICT_RESOLUTION);
-				$conflicted->setName(self::DAMAGE_TAG);
-				$nbt->setTag($conflicted);
-			}
-		}
-		end:
-		return ItemFactory::get($id, $data, $cnt, $nbt);
+			return ItemFactory::get($id, $meta, $cnt, $nbt);
+		})();
 	}
 
-	public function putSlot(Item $item) : void{
+	/**
+	 * @phpstan-param \Closure(NetworkBinaryStream) : void $writeExtraCrapInTheMiddle
+	 */
+	public function putItemStack(Item $item, \Closure $writeExtraCrapInTheMiddle) : void{
 		if($item->getId() === 0){
 			$this->putVarInt(0);
 
 			return;
 		}
 
-		$this->putVarInt($item->getId());
-		$auxValue = (($item->getDamage() & 0x7fff) << 8) | $item->getCount();
-		$this->putVarInt($auxValue);
+		$coreData = $item->getDamage();
+		[$netId, $netData] = ItemTranslator::getInstance()->toNetworkId($item->getId(), $coreData);
+
+		$this->putVarInt($netId);
+		$this->putLShort($item->getCount());
+		$this->putUnsignedVarInt($netData);
+
+		$writeExtraCrapInTheMiddle($this);
+
+		$blockRuntimeId = 0;
+		$isBlockItem = $item->getId() < 256;
+		if($isBlockItem){
+			$block = $item->getBlock();
+			if($block->getId() !== BlockIds::AIR){
+				$blockRuntimeId = RuntimeBlockMapping::toStaticRuntimeId($block->getId(), $block->getDamage());
+			}
+		}
+		$this->putVarInt($blockRuntimeId);
 
 		$nbt = null;
 		if($item->hasCompoundTag()){
 			$nbt = clone $item->getNamedTag();
 		}
-		if($item instanceof Durable and $item->getDamage() > 0){
+		if($item instanceof Durable and $coreData > 0){
 			if($nbt !== null){
 				if(($existing = $nbt->getTag(self::DAMAGE_TAG)) !== null){
 					$nbt->removeTag(self::DAMAGE_TAG);
@@ -271,34 +334,46 @@ class NetworkBinaryStream extends BinaryStream{
 			}else{
 				$nbt = new CompoundTag();
 			}
-			$nbt->setInt(self::DAMAGE_TAG, $item->getDamage());
+			$nbt->setInt(self::DAMAGE_TAG, $coreData);
+		}elseif($isBlockItem && $coreData !== 0){
+			//TODO HACK: This foul-smelling code ensures that we can correctly deserialize an item when the
+			//client sends it back to us, because as of 1.16.220, blockitems quietly discard their metadata
+			//client-side. Aside from being very annoying, this also breaks various server-side behaviours.
+			if($nbt === null){
+				$nbt = new CompoundTag();
+			}
+			$nbt->setInt(self::PM_META_TAG, $coreData);
 		}
 
-		if($nbt !== null){
-			$this->putLShort(0xffff);
-			$this->putByte(1); //TODO: some kind of count field? always 1 as of 1.9.0
-			$this->put((new NetworkLittleEndianNBTStream())->write($nbt));
-		}else{
-			$this->putLShort(0);
-		}
+		$this->putString(
+		(static function() use ($nbt, $netId) : string{
+			$extraData = new NetworkBinaryStream();
 
-		$this->putVarInt(0); //CanPlaceOn entry count (TODO)
-		$this->putVarInt(0); //CanDestroy entry count (TODO)
+			if($nbt !== null){
+				$extraData->putLShort(0xffff);
+				$extraData->putByte(1); //TODO: NBT data version (?)
+				$extraData->put((new LittleEndianNBTStream())->write($nbt));
+			}else{
+				$extraData->putLShort(0);
+			}
 
-		if($item->getId() === ItemIds::SHIELD){
-			$this->putVarLong(0); //"blocking tick" (ffs mojang)
-		}
+			$extraData->putLInt(0); //CanPlaceOn entry count (TODO)
+			$extraData->putLInt(0); //CanDestroy entry count (TODO)
+
+			if($netId === ItemTypeDictionary::getInstance()->fromStringId("minecraft:shield")){
+				$extraData->putLLong(0); //"blocking tick" (ffs mojang)
+			}
+			return $extraData->getBuffer();
+		})());
 	}
 
 	public function getRecipeIngredient() : Item{
-		$id = $this->getVarInt();
-		if($id === 0){
+		$netId = $this->getVarInt();
+		if($netId === 0){
 			return ItemFactory::get(ItemIds::AIR, 0, 0);
 		}
-		$meta = $this->getVarInt();
-		if($meta === 0x7fff){
-			$meta = -1;
-		}
+		$netData = $this->getVarInt();
+		[$id, $meta] = ItemTranslator::getInstance()->fromNetworkIdWithWildcardHandling($netId, $netData);
 		$count = $this->getVarInt();
 		return ItemFactory::get($id, $meta, $count);
 	}
@@ -307,8 +382,14 @@ class NetworkBinaryStream extends BinaryStream{
 		if($item->isNull()){
 			$this->putVarInt(0);
 		}else{
-			$this->putVarInt($item->getId());
-			$this->putVarInt($item->getDamage() & 0x7fff);
+			if($item->hasAnyDamageValue()){
+				[$netId, ] = ItemTranslator::getInstance()->toNetworkId($item->getId(), 0);
+				$netData = 0x7fff;
+			}else{
+				[$netId, $netData] = ItemTranslator::getInstance()->toNetworkId($item->getId(), $item->getDamage());
+			}
+			$this->putVarInt($netId);
+			$this->putVarInt($netData);
 			$this->putVarInt($item->getCount());
 		}
 	}
@@ -472,7 +553,7 @@ class NetworkBinaryStream extends BinaryStream{
 	/**
 	 * Reads and returns an EntityUniqueID
 	 */
-	public function getEntityUniqueId() : int{
+	final public function getEntityUniqueId() : int{
 		return $this->getVarLong();
 	}
 
@@ -486,7 +567,7 @@ class NetworkBinaryStream extends BinaryStream{
 	/**
 	 * Reads and returns an EntityRuntimeID
 	 */
-	public function getEntityRuntimeId() : int{
+	final public function getEntityRuntimeId() : int{
 		return $this->getUnsignedVarLong();
 	}
 
@@ -545,11 +626,10 @@ class NetworkBinaryStream extends BinaryStream{
 	 * Reads a floating-point Vector3 object with coordinates rounded to 4 decimal places.
 	 */
 	public function getVector3() : Vector3{
-		return new Vector3(
-			$this->getRoundedLFloat(4),
-			$this->getRoundedLFloat(4),
-			$this->getRoundedLFloat(4)
-		);
+		$x = $this->getLFloat();
+		$y = $this->getLFloat();
+		$z = $this->getLFloat();
+		return new Vector3($x, $y, $z);
 	}
 
 	/**
@@ -591,54 +671,56 @@ class NetworkBinaryStream extends BinaryStream{
 	 * Reads gamerules
 	 * TODO: implement this properly
 	 *
-	 * @return mixed[][], members are in the structure [name => [type, value]]
-	 * @phpstan-return array<string, array{0: int, 1: bool|int|float}>
+	 * @return mixed[][], members are in the structure [name => [type, value, isPlayerModifiable]]
+	 * @phpstan-return array<string, array{0: int, 1: bool|int|float, 2: bool}>
 	 */
 	public function getGameRules() : array{
 		$count = $this->getUnsignedVarInt();
 		$rules = [];
 		for($i = 0; $i < $count; ++$i){
 			$name = $this->getString();
+			$isPlayerModifiable = $this->getBool();
 			$type = $this->getUnsignedVarInt();
 			$value = null;
 			switch($type){
-				case 1:
+				case GameRuleType::BOOL:
 					$value = $this->getBool();
 					break;
-				case 2:
+				case GameRuleType::INT:
 					$value = $this->getUnsignedVarInt();
 					break;
-				case 3:
+				case GameRuleType::FLOAT:
 					$value = $this->getLFloat();
 					break;
 			}
 
-			$rules[$name] = [$type, $value];
+			$rules[$name] = [$type, $value, $isPlayerModifiable];
 		}
 
 		return $rules;
 	}
 
 	/**
-	 * Writes a gamerule array, members should be in the structure [name => [type, value]]
+	 * Writes a gamerule array, members should be in the structure [name => [type, value, isPlayerModifiable]]
 	 * TODO: implement this properly
 	 *
 	 * @param mixed[][] $rules
-	 * @phpstan-param array<string, array{0: int, 1: bool|int|float}> $rules
+	 * @phpstan-param array<string, array{0: int, 1: bool|int|float, 2: bool}> $rules
 	 */
 	public function putGameRules(array $rules) : void{
 		$this->putUnsignedVarInt(count($rules));
 		foreach($rules as $name => $rule){
 			$this->putString($name);
+			$this->putBool($rule[2]);
 			$this->putUnsignedVarInt($rule[0]);
 			switch($rule[0]){
-				case 1:
+				case GameRuleType::BOOL:
 					$this->putBool($rule[1]);
 					break;
-				case 2:
+				case GameRuleType::INT:
 					$this->putUnsignedVarInt($rule[1]);
 					break;
-				case 3:
+				case GameRuleType::FLOAT:
 					$this->putLFloat($rule[1]);
 					break;
 			}
@@ -646,14 +728,12 @@ class NetworkBinaryStream extends BinaryStream{
 	}
 
 	protected function getEntityLink() : EntityLink{
-		$link = new EntityLink();
-
-		$link->fromEntityUniqueId = $this->getEntityUniqueId();
-		$link->toEntityUniqueId = $this->getEntityUniqueId();
-		$link->type = $this->getByte();
-		$link->immediate = $this->getBool();
-
-		return $link;
+		$fromEntityUniqueId = $this->getEntityUniqueId();
+		$toEntityUniqueId = $this->getEntityUniqueId();
+		$type = $this->getByte();
+		$immediate = $this->getBool();
+		$causedByRider = $this->getBool();
+		return new EntityLink($fromEntityUniqueId, $toEntityUniqueId, $type, $immediate, $causedByRider);
 	}
 
 	protected function putEntityLink(EntityLink $link) : void{
@@ -661,6 +741,7 @@ class NetworkBinaryStream extends BinaryStream{
 		$this->putEntityUniqueId($link->toEntityUniqueId);
 		$this->putByte($link->type);
 		$this->putBool($link->immediate);
+		$this->putBool($link->causedByRider);
 	}
 
 	protected function getCommandOriginData() : CommandOriginData{
@@ -671,7 +752,7 @@ class NetworkBinaryStream extends BinaryStream{
 		$result->requestId = $this->getString();
 
 		if($result->type === CommandOriginData::ORIGIN_DEV_CONSOLE or $result->type === CommandOriginData::ORIGIN_TEST){
-			$result->varlong1 = $this->getVarLong();
+			$result->playerEntityUniqueId = $this->getVarLong();
 		}
 
 		return $result;
@@ -683,7 +764,7 @@ class NetworkBinaryStream extends BinaryStream{
 		$this->putString($data->requestId);
 
 		if($data->type === CommandOriginData::ORIGIN_DEV_CONSOLE or $data->type === CommandOriginData::ORIGIN_TEST){
-			$this->putVarLong($data->varlong1);
+			$this->putVarLong($data->playerEntityUniqueId);
 		}
 	}
 
@@ -751,5 +832,32 @@ class NetworkBinaryStream extends BinaryStream{
 		$this->putVarInt($structureEditorData->structureBlockType);
 		$this->putStructureSettings($structureEditorData->structureSettings);
 		$this->putVarInt($structureEditorData->structureRedstoneSaveMove);
+	}
+
+	public function getNbtRoot() : NamedTag{
+		$offset = $this->getOffset();
+		try{
+			$result = (new NetworkLittleEndianNBTStream())->read($this->getBuffer(), false, $offset, 512);
+			assert($result instanceof NamedTag, "doMultiple is false so we should definitely have a NamedTag here");
+			return $result;
+		}finally{
+			$this->setOffset($offset);
+		}
+	}
+
+	public function getNbtCompoundRoot() : CompoundTag{
+		$root = $this->getNbtRoot();
+		if(!($root instanceof CompoundTag)){
+			throw new \UnexpectedValueException("Expected TAG_Compound root");
+		}
+		return $root;
+	}
+
+	public function readGenericTypeNetworkId() : int{
+		return $this->getVarInt();
+	}
+
+	public function writeGenericTypeNetworkId(int $id) : void{
+		$this->putVarInt($id);
 	}
 }

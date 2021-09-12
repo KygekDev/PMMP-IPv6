@@ -182,7 +182,9 @@ class McRegion extends BaseLevelProvider{
 
 		$heightMap = [];
 		if($chunk->hasTag("HeightMap", ByteArrayTag::class)){
-			$heightMap = array_values(unpack("C*", $chunk->getByteArray("HeightMap")));
+			/** @var int[] $unpackedHeightMap */
+			$unpackedHeightMap = unpack("C*", $chunk->getByteArray("HeightMap")); //unpack() will never fail here
+			$heightMap = array_values($unpackedHeightMap);
 		}elseif($chunk->hasTag("HeightMap", IntArrayTag::class)){
 			$heightMap = $chunk->getIntArray("HeightMap"); #blameshoghicp
 		}
@@ -245,11 +247,13 @@ class McRegion extends BaseLevelProvider{
 
 		if($isValid){
 			$files = array_filter(scandir($path . "/region/", SCANDIR_SORT_NONE), function(string $file) : bool{
-				return substr($file, strrpos($file, ".") + 1, 2) === "mc"; //region file
+				$extPos = strrpos($file, ".");
+				return $extPos !== false && substr($file, $extPos + 1, 2) === "mc"; //region file
 			});
 
 			foreach($files as $f){
-				if(substr($f, strrpos($f, ".") + 1) !== static::REGION_FILE_EXTENSION){
+				$extPos = strrpos($f, ".");
+				if($extPos !== false && substr($f, $extPos + 1) !== static::REGION_FILE_EXTENSION){
 					$isValid = false;
 					break;
 				}
@@ -389,6 +393,9 @@ class McRegion extends BaseLevelProvider{
 		self::getRegionIndex($chunkX, $chunkZ, $regionX, $regionZ);
 		assert(is_int($regionX) and is_int($regionZ));
 
+		if(!file_exists($this->pathToRegion($regionX, $regionZ))){
+			return null;
+		}
 		$this->loadRegion($regionX, $regionZ);
 
 		$chunkData = $this->getRegion($regionX, $regionZ)->readChunk($chunkX & 0x1f, $chunkZ & 0x1f);

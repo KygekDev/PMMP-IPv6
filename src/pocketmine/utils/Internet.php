@@ -31,6 +31,7 @@ use function curl_getinfo;
 use function curl_init;
 use function curl_setopt_array;
 use function explode;
+use function is_string;
 use function preg_match;
 use function socket_close;
 use function socket_connect;
@@ -72,7 +73,7 @@ class Internet{
 	 *
 	 * @param bool $force default false, force IP check even when cached
 	 *
-	 * @return string|bool
+	 * @return string|false
 	 */
 	public static function getIP(bool $force = false){
 		if(!self::$online){
@@ -116,7 +117,10 @@ class Internet{
 	 * @throws InternetException
 	 */
 	public static function getInternalIP() : string{
-		$sock = socket_create(AF_INET, SOCK_DGRAM, SOL_UDP);
+		$sock = @socket_create(AF_INET, SOCK_DGRAM, SOL_UDP);
+		if($sock === false){
+			throw new InternetException("Failed to get internal IP: " . trim(socket_strerror(socket_last_error())));
+		}
 		try{
 			if(!@socket_connect($sock, "8.8.8.8", 65534)){
 				throw new InternetException("Failed to get internal IP: " . trim(socket_strerror(socket_last_error($sock))));
@@ -192,7 +196,7 @@ class Internet{
 	 * @param callable|null $onSuccess    function to be called if there is no error. Accepts a resource argument as the cURL handle.
 	 * @phpstan-param array<int, mixed>                $extraOpts
 	 * @phpstan-param list<string>                     $extraHeaders
-	 * @phpstan-param (callable(resource) : void)|null $onSuccess
+	 * @phpstan-param (callable(PhpCurlHandle) : void)|null $onSuccess
 	 *
 	 * @return array a plain array of three [result body : string, headers : string[][], HTTP response code : int]. Headers are grouped by requests with strtolower(header name) as keys and header value as values
 	 * @phpstan-return array{string, list<array<string, string>>, int}
@@ -205,6 +209,9 @@ class Internet{
 		}
 
 		$ch = curl_init($page);
+		if($ch === false){
+			throw new InternetException("Unable to create new cURL session");
+		}
 
 		curl_setopt_array($ch, $extraOpts + [
 			CURLOPT_SSL_VERIFYPEER => false,
@@ -221,10 +228,10 @@ class Internet{
 		]);
 		try{
 			$raw = curl_exec($ch);
-			$error = curl_error($ch);
-			if($error !== ""){
-				throw new InternetException($error);
+			if($raw === false){
+				throw new InternetException(curl_error($ch));
 			}
+			if(!is_string($raw)) throw new AssumptionFailedError("curl_exec() should return string|false when CURLOPT_RETURNTRANSFER is set");
 			$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 			$headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
 			$rawHeaders = substr($raw, 0, $headerSize);

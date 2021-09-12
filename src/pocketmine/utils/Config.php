@@ -172,6 +172,10 @@ class Config{
 		}else{
 			if($this->correct){
 				$content = file_get_contents($this->file);
+				if($content === false){
+					$this->correct = false;
+					return false;
+				}
 				$config = null;
 				switch($this->type){
 					case Config::PROPERTIES:
@@ -245,9 +249,16 @@ class Config{
 	}
 
 	/**
+	 * Returns the path of the config.
+	 */
+	public function getPath() : string{
+		return $this->file;
+	}
+
+	/**
 	 * Sets the options for the JSON encoding when saving
 	 *
-	 * @return Config $this
+	 * @return $this
 	 * @throws \RuntimeException if the Config is not in JSON
 	 * @see json_encode
 	 */
@@ -264,7 +275,7 @@ class Config{
 	/**
 	 * Enables the given option in addition to the currently set JSON options
 	 *
-	 * @return Config $this
+	 * @return $this
 	 * @throws \RuntimeException if the Config is not in JSON
 	 * @see json_encode
 	 */
@@ -281,7 +292,7 @@ class Config{
 	/**
 	 * Disables the given option for the JSON encoding when saving
 	 *
-	 * @return Config $this
+	 * @return $this
 	 * @throws \RuntimeException if the Config is not in JSON
 	 * @see json_encode
 	 */
@@ -562,7 +573,6 @@ class Config{
 
 	/**
 	 * @return mixed[]
-	 * @phpstan-return array<string, mixed>
 	 */
 	private function parseProperties(string $content) : array{
 		$result = [];

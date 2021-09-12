@@ -102,6 +102,7 @@ use pocketmine\updater\AutoUpdater;
 use pocketmine\utils\Config;
 use pocketmine\utils\Internet;
 use pocketmine\utils\MainLogger;
+use pocketmine\utils\Process;
 use pocketmine\utils\Terminal;
 use pocketmine\utils\TextFormat;
 use pocketmine\utils\Utils;
@@ -126,7 +127,6 @@ use function file_put_contents;
 use function filemtime;
 use function function_exists;
 use function get_class;
-use function getmypid;
 use function getopt;
 use function gettype;
 use function implode;
@@ -702,29 +702,32 @@ class Server{
 		return $result;
 	}
 
+	private function getPlayerDataPath(string $username) : string{
+		return $this->getDataPath() . '/players/' . strtolower($username) . '.dat';
+	}
+
 	/**
 	 * Returns whether the server has stored any saved data for this player.
 	 */
 	public function hasOfflinePlayerData(string $name) : bool{
-		$name = strtolower($name);
-		return file_exists($this->getDataPath() . "players/$name.dat");
+		return file_exists($this->getPlayerDataPath($name));
 	}
 
 	public function getOfflinePlayerData(string $name) : CompoundTag{
 		$name = strtolower($name);
-		$path = $this->getDataPath() . "players/";
+		$path = $this->getPlayerDataPath($name);
 		if($this->shouldSavePlayerData()){
-			if(file_exists($path . "$name.dat")){
+			if(file_exists($path)){
 				try{
 					$nbt = new BigEndianNBTStream();
-					$compound = $nbt->readCompressed(file_get_contents($path . "$name.dat"));
+					$compound = $nbt->readCompressed(file_get_contents($path));
 					if(!($compound instanceof CompoundTag)){
 						throw new \RuntimeException("Invalid data found in \"$name.dat\", expected " . CompoundTag::class . ", got " . (is_object($compound) ? get_class($compound) : gettype($compound)));
 					}
 
 					return $compound;
 				}catch(\Throwable $e){ //zlib decode error / corrupt data
-					rename($path . "$name.dat", $path . "$name.dat.bak");
+					rename($path, $path . '.bak');
 					$this->logger->notice($this->getLanguage()->translateString("pocketmine.data.playerCorrupted", [$name]));
 				}
 			}else{
@@ -785,7 +788,7 @@ class Server{
 		if(!$ev->isCancelled()){
 			$nbt = new BigEndianNBTStream();
 			try{
-				file_put_contents($this->getDataPath() . "players/" . strtolower($name) . ".dat", $nbt->writeCompressed($ev->getSaveData()));
+				file_put_contents($this->getPlayerDataPath($name), $nbt->writeCompressed($ev->getSaveData()));
 			}catch(\Throwable $e){
 				$this->logger->critical($this->getLanguage()->translateString("pocketmine.data.saveError", [$name, $e->getMessage()]));
 				$this->logger->logException($e);
@@ -1407,10 +1410,10 @@ class Server{
 				Network::$BATCH_THRESHOLD = -1;
 			}
 
-			$this->networkCompressionLevel = (int) $this->getProperty("network.compression-level", 7);
+			$this->networkCompressionLevel = (int) $this->getProperty("network.compression-level", 6);
 			if($this->networkCompressionLevel < 1 or $this->networkCompressionLevel > 9){
-				$this->logger->warning("Invalid network compression level $this->networkCompressionLevel set, setting to default 7");
-				$this->networkCompressionLevel = 7;
+				$this->logger->warning("Invalid network compression level $this->networkCompressionLevel set, setting to default 6");
+				$this->networkCompressionLevel = 6;
 			}
 			$this->networkCompressionAsync = (bool) $this->getProperty("network.async-compression", true);
 
@@ -1469,8 +1472,7 @@ class Server{
 
 			$this->onlineMode = $this->getConfigBool("xbox-auth", true);
 			if($this->onlineMode){
-				$this->logger->notice($this->getLanguage()->translateString("pocketmine.server.auth.enabled"));
-				$this->logger->notice($this->getLanguage()->translateString("pocketmine.server.authProperty.enabled"));
+				$this->logger->info($this->getLanguage()->translateString("pocketmine.server.auth.enabled"));
 			}else{
 				$this->logger->warning($this->getLanguage()->translateString("pocketmine.server.auth.disabled"));
 				$this->logger->warning($this->getLanguage()->translateString("pocketmine.server.authWarning"));
@@ -1552,7 +1554,7 @@ class Server{
 					if(isset($options["generator"])){
 						$generatorOptions = explode(":", $options["generator"]);
 						$generator = GeneratorManager::getGenerator(array_shift($generatorOptions));
-						if(count($options) > 0){
+						if(count($generatorOptions) > 0){
 							$options["preset"] = implode(":", $generatorOptions);
 						}
 					}else{
@@ -1678,7 +1680,7 @@ class Server{
 		}
 
 		foreach($recipients as $recipient){
-			$recipient->addTitle($title, $subtitle, $fadeIn, $stay, $fadeOut);
+			$recipient->sendTitle($title, $subtitle, $fadeIn, $stay, $fadeOut);
 		}
 
 		return count($recipients);
@@ -1948,7 +1950,7 @@ class Server{
 		}catch(\Throwable $e){
 			$this->logger->logException($e);
 			$this->logger->emergency("Crashed while crashing, killing process");
-			@Utils::kill(getmypid());
+			@Process::kill(Process::pid());
 		}
 
 	}
@@ -2104,17 +2106,24 @@ class Server{
 
 				if($report){
 					$url = ((bool) $this->getProperty("auto-report.use-https", true) ? "https" : "http") . "://" . $this->getProperty("auto-report.host", "crash.pmmp.io") . "/submit/api";
+					$postUrlError = "Unknown error";
 					$reply = Internet::postURL($url, [
 						"report" => "yes",
 						"name" => $this->getName() . " " . $this->getPocketMineVersion(),
 						"email" => "crash@pocketmine.net",
 						"reportPaste" => base64_encode($dump->getEncodedData())
-					]);
+					], 10, [], $postUrlError);
 
-					if($reply !== false and ($data = json_decode($reply)) !== null and isset($data->crashId) and isset($data->crashUrl)){
-						$reportId = $data->crashId;
-						$reportUrl = $data->crashUrl;
-						$this->logger->emergency($this->getLanguage()->translateString("pocketmine.crash.archive", [$reportUrl, $reportId]));
+					if($reply !== false and ($data = json_decode($reply)) !== null){
+						if(isset($data->crashId) and isset($data->crashUrl)){
+							$reportId = $data->crashId;
+							$reportUrl = $data->crashUrl;
+							$this->logger->emergency($this->getLanguage()->translateString("pocketmine.crash.archive", [$reportUrl, $reportId]));
+						}elseif(isset($data->error)){
+							$this->logger->emergency("Automatic crash report submission failed: $data->error");
+						}
+					}else{
+						$this->logger->emergency("Failed to communicate with crash archive: $postUrlError");
 					}
 				}
 			}
@@ -2134,7 +2143,7 @@ class Server{
 			echo "--- Waiting $spacing seconds to throttle automatic restart (you can kill the process safely now) ---" . PHP_EOL;
 			sleep($spacing);
 		}
-		@Utils::kill(getmypid());
+		@Process::kill(Process::pid());
 		exit(1);
 	}
 
@@ -2335,10 +2344,10 @@ class Server{
 
 	private function titleTick() : void{
 		Timings::$titleTickTimer->startTiming();
-		$d = Utils::getRealMemoryUsage();
+		$d = Process::getRealMemoryUsage();
 
-		$u = Utils::getMemoryUsage(true);
-		$usage = sprintf("%g/%g/%g/%g MB @ %d threads", round(($u[0] / 1024) / 1024, 2), round(($d[0] / 1024) / 1024, 2), round(($u[1] / 1024) / 1024, 2), round(($u[2] / 1024) / 1024, 2), Utils::getThreadCount());
+		$u = Process::getAdvancedMemoryUsage();
+		$usage = sprintf("%g/%g/%g/%g MB @ %d threads", round(($u[0] / 1024) / 1024, 2), round(($d[0] / 1024) / 1024, 2), round(($u[1] / 1024) / 1024, 2), round(($u[2] / 1024) / 1024, 2), Process::getThreadCount());
 
 		echo "\x1b]0;" . $this->getName() . " " .
 			$this->getPocketMineVersion() .

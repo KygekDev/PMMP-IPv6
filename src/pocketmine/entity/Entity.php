@@ -77,9 +77,9 @@ use function abs;
 use function assert;
 use function cos;
 use function count;
-use function current;
 use function deg2rad;
 use function floor;
+use function fmod;
 use function get_class;
 use function in_array;
 use function is_a;
@@ -94,6 +94,7 @@ use const M_PI_2;
 abstract class Entity extends Location implements Metadatable, EntityIds{
 
 	public const MOTION_THRESHOLD = 0.00001;
+	protected const STEP_CLIP_MULTIPLIER = 0.4;
 
 	public const NETWORK_ID = -1;
 
@@ -174,56 +175,56 @@ abstract class Entity extends Location implements Metadatable, EntityIds{
 	public const DATA_RIDER_ROTATION_LOCKED = 57; //byte
 	public const DATA_RIDER_MAX_ROTATION = 58; //float
 	public const DATA_RIDER_MIN_ROTATION = 59; //float
-	public const DATA_AREA_EFFECT_CLOUD_RADIUS = 60; //float
-	public const DATA_AREA_EFFECT_CLOUD_WAITING = 61; //int
-	public const DATA_AREA_EFFECT_CLOUD_PARTICLE_ID = 62; //int
-	/* 63 (int) shulker-related */
-	public const DATA_SHULKER_ATTACH_FACE = 64; //byte
-	/* 65 (short) shulker-related */
-	public const DATA_SHULKER_ATTACH_POS = 66; //block coords
-	public const DATA_TRADING_PLAYER_EID = 67; //long
+	public const DATA_AREA_EFFECT_CLOUD_RADIUS = 61; //float
+	public const DATA_AREA_EFFECT_CLOUD_WAITING = 62; //int
+	public const DATA_AREA_EFFECT_CLOUD_PARTICLE_ID = 63; //int
+	/* 64 (int) shulker-related */
+	public const DATA_SHULKER_ATTACH_FACE = 65; //byte
+	/* 66 (short) shulker-related */
+	public const DATA_SHULKER_ATTACH_POS = 67; //block coords
+	public const DATA_TRADING_PLAYER_EID = 68; //long
 
-	/* 69 (byte) command-block */
-	public const DATA_COMMAND_BLOCK_COMMAND = 70; //string
-	public const DATA_COMMAND_BLOCK_LAST_OUTPUT = 71; //string
-	public const DATA_COMMAND_BLOCK_TRACK_OUTPUT = 72; //byte
-	public const DATA_CONTROLLING_RIDER_SEAT_NUMBER = 73; //byte
-	public const DATA_STRENGTH = 74; //int
-	public const DATA_MAX_STRENGTH = 75; //int
-	/* 76 (int) */
-	public const DATA_LIMITED_LIFE = 77;
-	public const DATA_ARMOR_STAND_POSE_INDEX = 78; //int
-	public const DATA_ENDER_CRYSTAL_TIME_OFFSET = 79; //int
-	public const DATA_ALWAYS_SHOW_NAMETAG = 80; //byte: -1 = default, 0 = only when looked at, 1 = always
-	public const DATA_COLOR_2 = 81; //byte
-	/* 82 (unknown) */
-	public const DATA_SCORE_TAG = 83; //string
-	public const DATA_BALLOON_ATTACHED_ENTITY = 84; //int64, entity unique ID of owner
-	public const DATA_PUFFERFISH_SIZE = 85; //byte
-	public const DATA_BOAT_BUBBLE_TIME = 86; //int (time in bubble column)
-	public const DATA_PLAYER_AGENT_EID = 87; //long
-	/* 88 (float) related to panda sitting
-	 * 89 (float) related to panda sitting */
-	public const DATA_EAT_COUNTER = 90; //int (used by pandas)
-	public const DATA_FLAGS2 = 91; //long (extended data flags)
-	/* 92 (float) related to panda lying down
-	 * 93 (float) related to panda lying down */
-	public const DATA_AREA_EFFECT_CLOUD_DURATION = 94; //int
-	public const DATA_AREA_EFFECT_CLOUD_SPAWN_TIME = 95; //int
-	public const DATA_AREA_EFFECT_CLOUD_RADIUS_PER_TICK = 96; //float, usually negative
-	public const DATA_AREA_EFFECT_CLOUD_RADIUS_CHANGE_ON_PICKUP = 97; //float
-	public const DATA_AREA_EFFECT_CLOUD_PICKUP_COUNT = 98; //int
-	public const DATA_INTERACTIVE_TAG = 99; //string (button text)
-	public const DATA_TRADE_TIER = 100; //int
-	public const DATA_MAX_TRADE_TIER = 101; //int
-	public const DATA_TRADE_XP = 102; //int
-	public const DATA_SKIN_ID = 103; //int ???
-	/* 104 (int) related to wither */
-	public const DATA_COMMAND_BLOCK_TICK_DELAY = 105; //int
-	public const DATA_COMMAND_BLOCK_EXECUTE_ON_FIRST_TICK = 106; //byte
-	public const DATA_AMBIENT_SOUND_INTERVAL_MIN = 107; //float
-	public const DATA_AMBIENT_SOUND_INTERVAL_RANGE = 108; //float
-	public const DATA_AMBIENT_SOUND_EVENT = 109; //string
+	/* 70 (byte) command-block */
+	public const DATA_COMMAND_BLOCK_COMMAND = 71; //string
+	public const DATA_COMMAND_BLOCK_LAST_OUTPUT = 72; //string
+	public const DATA_COMMAND_BLOCK_TRACK_OUTPUT = 73; //byte
+	public const DATA_CONTROLLING_RIDER_SEAT_NUMBER = 74; //byte
+	public const DATA_STRENGTH = 75; //int
+	public const DATA_MAX_STRENGTH = 76; //int
+	/* 77 (int) */
+	public const DATA_LIMITED_LIFE = 78;
+	public const DATA_ARMOR_STAND_POSE_INDEX = 79; //int
+	public const DATA_ENDER_CRYSTAL_TIME_OFFSET = 80; //int
+	public const DATA_ALWAYS_SHOW_NAMETAG = 81; //byte: -1 = default, 0 = only when looked at, 1 = always
+	public const DATA_COLOR_2 = 82; //byte
+	/* 83 (unknown) */
+	public const DATA_SCORE_TAG = 84; //string
+	public const DATA_BALLOON_ATTACHED_ENTITY = 85; //int64, entity unique ID of owner
+	public const DATA_PUFFERFISH_SIZE = 86; //byte
+	public const DATA_BOAT_BUBBLE_TIME = 87; //int (time in bubble column)
+	public const DATA_PLAYER_AGENT_EID = 88; //long
+	/* 89 (float) related to panda sitting
+	 * 90 (float) related to panda sitting */
+	public const DATA_EAT_COUNTER = 91; //int (used by pandas)
+	public const DATA_FLAGS2 = 92; //long (extended data flags)
+	/* 93 (float) related to panda lying down
+	 * 94 (float) related to panda lying down */
+	public const DATA_AREA_EFFECT_CLOUD_DURATION = 95; //int
+	public const DATA_AREA_EFFECT_CLOUD_SPAWN_TIME = 96; //int
+	public const DATA_AREA_EFFECT_CLOUD_RADIUS_PER_TICK = 97; //float, usually negative
+	public const DATA_AREA_EFFECT_CLOUD_RADIUS_CHANGE_ON_PICKUP = 98; //float
+	public const DATA_AREA_EFFECT_CLOUD_PICKUP_COUNT = 99; //int
+	public const DATA_INTERACTIVE_TAG = 100; //string (button text)
+	public const DATA_TRADE_TIER = 101; //int
+	public const DATA_MAX_TRADE_TIER = 102; //int
+	public const DATA_TRADE_XP = 103; //int
+	public const DATA_SKIN_ID = 104; //int ???
+	/* 105 (int) related to wither */
+	public const DATA_COMMAND_BLOCK_TICK_DELAY = 106; //int
+	public const DATA_COMMAND_BLOCK_EXECUTE_ON_FIRST_TICK = 107; //byte
+	public const DATA_AMBIENT_SOUND_INTERVAL_MIN = 108; //float
+	public const DATA_AMBIENT_SOUND_INTERVAL_RANGE = 109; //float
+	public const DATA_AMBIENT_SOUND_EVENT = 110; //string
 
 	public const DATA_FLAG_ONFIRE = 0;
 	public const DATA_FLAG_SNEAKING = 1;
@@ -311,12 +312,15 @@ abstract class Entity extends Location implements Metadatable, EntityIds{
 	public const DATA_FLAG_ROARING = 83;
 	public const DATA_FLAG_DELAYED_ATTACKING = 84;
 	public const DATA_FLAG_AVOIDING_MOBS = 85;
-	public const DATA_FLAG_FACING_TARGET_TO_RANGE_ATTACK = 86;
-	public const DATA_FLAG_HIDDEN_WHEN_INVISIBLE = 87; //??????????????????
-	public const DATA_FLAG_IS_IN_UI = 88;
-	public const DATA_FLAG_STALKING = 89;
-	public const DATA_FLAG_EMOTING = 90;
-	public const DATA_FLAG_CELEBRATING = 91;
+	public const DATA_FLAG_AVOIDING_BLOCK = 86;
+	public const DATA_FLAG_FACING_TARGET_TO_RANGE_ATTACK = 87;
+	public const DATA_FLAG_HIDDEN_WHEN_INVISIBLE = 88; //??????????????????
+	public const DATA_FLAG_IS_IN_UI = 89;
+	public const DATA_FLAG_STALKING = 90;
+	public const DATA_FLAG_EMOTING = 91;
+	public const DATA_FLAG_CELEBRATING = 92;
+	public const DATA_FLAG_ADMIRING = 93;
+	public const DATA_FLAG_CELEBRATING_SPECIAL = 94;
 
 	public const DATA_PLAYER_FLAG_SLEEP = 1;
 	public const DATA_PLAYER_FLAG_DEAD = 2; //TODO: CHECK
@@ -329,8 +333,8 @@ abstract class Entity extends Location implements Metadatable, EntityIds{
 	 */
 	private static $knownEntities = [];
 	/**
-	 * @var string[][]
-	 * @phpstan-var array<class-string<Entity>, list<string>>
+	 * @var string[]
+	 * @phpstan-var array<class-string<Entity>, string>
 	 */
 	private static $saveNames = [];
 
@@ -409,7 +413,7 @@ abstract class Entity extends Location implements Metadatable, EntityIds{
 				self::$knownEntities[$name] = $className;
 			}
 
-			self::$saveNames[$className] = $saveNames;
+			self::$saveNames[$className] = reset($saveNames);
 
 			return true;
 		}
@@ -704,10 +708,10 @@ abstract class Entity extends Location implements Metadatable, EntityIds{
 
 		$this->boundingBox->setBounds(
 			$this->x - $halfWidth,
-			$this->y,
+			$this->y + $this->ySize,
 			$this->z - $halfWidth,
 			$this->x + $halfWidth,
-			$this->y + $this->height,
+			$this->y + $this->height + $this->ySize,
 			$this->z + $halfWidth
 		);
 	}
@@ -865,10 +869,9 @@ abstract class Entity extends Location implements Metadatable, EntityIds{
 	 */
 	public function getSaveId() : string{
 		if(!isset(self::$saveNames[static::class])){
-			throw new \InvalidStateException("Entity is not registered");
+			throw new \InvalidStateException("Entity " . static::class . " is not registered");
 		}
-		reset(self::$saveNames[static::class]);
-		return current(self::$saveNames[static::class]);
+		return self::$saveNames[static::class];
 	}
 
 	public function saveNBT() : void{
@@ -1168,6 +1171,9 @@ abstract class Entity extends Location implements Metadatable, EntityIds{
 		if($teleport){
 			$pk->flags |= MoveActorAbsolutePacket::FLAG_TELEPORT;
 		}
+		if($this->onGround){
+			$pk->flags |= MoveActorAbsolutePacket::FLAG_GROUND;
+		}
 
 		$this->level->broadcastPacketToViewers($this, $pk);
 	}
@@ -1305,7 +1311,7 @@ abstract class Entity extends Location implements Metadatable, EntityIds{
 	}
 
 	public function getDirection() : ?int{
-		$rotation = ($this->yaw - 90) % 360;
+		$rotation = fmod($this->yaw - 90, 360);
 		if($rotation < 0){
 			$rotation += 360.0;
 		}
@@ -1443,8 +1449,14 @@ abstract class Entity extends Location implements Metadatable, EntityIds{
 				$this->fall($this->fallDistance);
 				$this->resetFallDistance();
 			}
-		}elseif($distanceThisTick < 0){
+		}elseif($distanceThisTick < $this->fallDistance){
+			//we've fallen some distance (distanceThisTick is negative)
+			//or we ascended back towards where fall distance was measured from initially (distanceThisTick is positive but less than existing fallDistance)
 			$this->fallDistance -= $distanceThisTick;
+		}else{
+			//we ascended past the apex where fall distance was originally being measured from
+			//reset it so it will be measured starting from the new, higher position
+			$this->fallDistance = 0;
 		}
 	}
 
@@ -1532,7 +1544,7 @@ abstract class Entity extends Location implements Metadatable, EntityIds{
 		if($this->keepMovement){
 			$this->boundingBox->offset($dx, $dy, $dz);
 		}else{
-			$this->ySize *= 0.4;
+			$this->ySize *= self::STEP_CLIP_MULTIPLIER;
 
 			/*
 			if($this->isColliding){ //With cobweb?
@@ -1599,7 +1611,7 @@ abstract class Entity extends Location implements Metadatable, EntityIds{
 
 			$this->boundingBox->offset(0, 0, $dz);
 
-			if($this->stepHeight > 0 and $fallingFlag and $this->ySize < 0.05 and ($movX != $dx or $movZ != $dz)){
+			if($this->stepHeight > 0 and $fallingFlag and ($movX != $dx or $movZ != $dz)){
 				$cx = $dx;
 				$cy = $dy;
 				$cz = $dz;
@@ -1631,13 +1643,20 @@ abstract class Entity extends Location implements Metadatable, EntityIds{
 
 				$this->boundingBox->offset(0, 0, $dz);
 
+				$reverseDY = -$dy;
+				foreach($list as $bb){
+					$reverseDY = $bb->calculateYOffset($this->boundingBox, $reverseDY);
+				}
+				$dy += $reverseDY;
+				$this->boundingBox->offset(0, $reverseDY, 0);
+
 				if(($cx ** 2 + $cz ** 2) >= ($dx ** 2 + $dz ** 2)){
 					$dx = $cx;
 					$dy = $cy;
 					$dz = $cz;
 					$this->boundingBox->setBB($axisalignedbb1);
 				}else{
-					$this->ySize += 0.5; //FIXME: this should be the height of the block it walked up, not fixed 0.5
+					$this->ySize += $dy;
 				}
 			}
 		}
@@ -1747,7 +1766,7 @@ abstract class Entity extends Location implements Metadatable, EntityIds{
 		}
 
 		if($pos instanceof Position and $pos->level !== null and $pos->level !== $this->level){
-			if(!$this->switchLevel($pos->getLevel())){
+			if(!$this->switchLevel($pos->getLevelNonNull())){
 				return false;
 			}
 		}
@@ -1853,7 +1872,7 @@ abstract class Entity extends Location implements Metadatable, EntityIds{
 			$pitch = $pitch ?? $pos->pitch;
 		}
 		$from = Position::fromObject($this, $this->level);
-		$to = Position::fromObject($pos, $pos instanceof Position ? $pos->getLevel() : $this->level);
+		$to = Position::fromObject($pos, $pos instanceof Position ? $pos->getLevelNonNull() : $this->level);
 		$ev = new EntityTeleportEvent($this, $from, $to);
 		$ev->call();
 		if($ev->isCancelled()){
@@ -1865,7 +1884,7 @@ abstract class Entity extends Location implements Metadatable, EntityIds{
 		$this->setMotion($this->temporalVector->setComponents(0, 0, 0));
 		if($this->setPositionAndRotation($pos, $yaw ?? $this->yaw, $pitch ?? $this->pitch)){
 			$this->resetFallDistance();
-			$this->onGround = true;
+			$this->setForceMovementUpdate();
 
 			$this->updateMovement(true);
 
@@ -1918,7 +1937,7 @@ abstract class Entity extends Location implements Metadatable, EntityIds{
 	protected function sendSpawnPacket(Player $player) : void{
 		$pk = new AddActorPacket();
 		$pk->entityRuntimeId = $this->getId();
-		$pk->type = static::NETWORK_ID;
+		$pk->type = AddActorPacket::LEGACY_ID_MAP_BC[static::NETWORK_ID];
 		$pk->position = $this->asVector3();
 		$pk->motion = $this->getMotion();
 		$pk->yaw = $this->yaw;

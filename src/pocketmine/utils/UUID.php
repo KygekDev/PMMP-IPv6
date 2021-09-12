@@ -61,7 +61,12 @@ class UUID{
 	 * Creates an UUID from an hexadecimal representation
 	 */
 	public static function fromString(string $uuid, int $version = null) : UUID{
-		return self::fromBinary(hex2bin(str_replace("-", "", trim($uuid))), $version);
+		//TODO: should we be stricter about the notation (8-4-4-4-12)?
+		$binary = @hex2bin(str_replace("-", "", trim($uuid)));
+		if($binary === false){
+			throw new \InvalidArgumentException("Invalid hex string UUID representation");
+		}
+		return self::fromBinary($binary, $version);
 	}
 
 	/**
@@ -89,7 +94,7 @@ class UUID{
 	}
 
 	public static function fromRandom() : UUID{
-		return self::fromData(Binary::writeInt(time()), Binary::writeShort(getmypid()), Binary::writeShort(getmyuid()), Binary::writeInt(mt_rand(-0x7fffffff, 0x7fffffff)), Binary::writeInt(mt_rand(-0x7fffffff, 0x7fffffff)));
+		return self::fromData(Binary::writeInt(time()), Binary::writeShort(($pid = getmypid()) !== false ? $pid : 0), Binary::writeShort(($uid = getmyuid()) !== false ? $uid : 0), Binary::writeInt(mt_rand(-0x7fffffff, 0x7fffffff)), Binary::writeInt(mt_rand(-0x7fffffff, 0x7fffffff)));
 	}
 
 	public function toBinary() : string{

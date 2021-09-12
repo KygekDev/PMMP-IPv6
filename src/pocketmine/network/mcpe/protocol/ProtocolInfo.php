@@ -37,11 +37,11 @@ interface ProtocolInfo{
 	 */
 
 	/** Actual Minecraft: PE protocol version */
-	public const CURRENT_PROTOCOL = 390;
+	public const CURRENT_PROTOCOL = 448;
 	/** Current Minecraft PE version reported by the server. This is usually the earliest currently supported version. */
-	public const MINECRAFT_VERSION = 'v1.14.60';
+	public const MINECRAFT_VERSION = 'v1.17.10';
 	/** Version number sent to clients in ping responses. */
-	public const MINECRAFT_VERSION_NETWORK = '1.14.60';
+	public const MINECRAFT_VERSION_NETWORK = '1.17.10';
 
 	public const LOGIN_PACKET = 0x01;
 	public const PLAY_STATUS_PACKET = 0x02;
@@ -79,7 +79,7 @@ interface ProtocolInfo{
 	public const BLOCK_PICK_REQUEST_PACKET = 0x22;
 	public const ACTOR_PICK_REQUEST_PACKET = 0x23;
 	public const PLAYER_ACTION_PACKET = 0x24;
-	public const ACTOR_FALL_PACKET = 0x25;
+
 	public const HURT_ARMOR_PACKET = 0x26;
 	public const SET_ACTOR_DATA_PACKET = 0x27;
 	public const SET_ACTOR_MOTION_PACKET = 0x28;
@@ -168,7 +168,7 @@ interface ProtocolInfo{
 	public const LEVEL_SOUND_EVENT_PACKET = 0x7b;
 	public const LEVEL_EVENT_GENERIC_PACKET = 0x7c;
 	public const LECTERN_UPDATE_PACKET = 0x7d;
-	public const VIDEO_STREAM_CONNECT_PACKET = 0x7e;
+
 	public const ADD_ENTITY_PACKET = 0x7f;
 	public const REMOVE_ENTITY_PACKET = 0x80;
 	public const CLIENT_CACHE_STATUS_PACKET = 0x81;
@@ -176,7 +176,7 @@ interface ProtocolInfo{
 	public const MAP_CREATE_LOCKED_COPY_PACKET = 0x83;
 	public const STRUCTURE_TEMPLATE_DATA_REQUEST_PACKET = 0x84;
 	public const STRUCTURE_TEMPLATE_DATA_RESPONSE_PACKET = 0x85;
-	public const UPDATE_BLOCK_PROPERTIES_PACKET = 0x86;
+
 	public const CLIENT_CACHE_BLOB_STATUS_PACKET = 0x87;
 	public const CLIENT_CACHE_MISS_RESPONSE_PACKET = 0x88;
 	public const EDUCATION_SETTINGS_PACKET = 0x89;
@@ -187,5 +187,30 @@ interface ProtocolInfo{
 	public const COMPLETED_USING_ITEM_PACKET = 0x8e;
 	public const NETWORK_SETTINGS_PACKET = 0x8f;
 	public const PLAYER_AUTH_INPUT_PACKET = 0x90;
+	public const CREATIVE_CONTENT_PACKET = 0x91;
+	public const PLAYER_ENCHANT_OPTIONS_PACKET = 0x92;
+	public const ITEM_STACK_REQUEST_PACKET = 0x93;
+	public const ITEM_STACK_RESPONSE_PACKET = 0x94;
+	public const PLAYER_ARMOR_DAMAGE_PACKET = 0x95;
+	public const CODE_BUILDER_PACKET = 0x96;
+	public const UPDATE_PLAYER_GAME_TYPE_PACKET = 0x97;
+	public const EMOTE_LIST_PACKET = 0x98;
+	public const POSITION_TRACKING_D_B_SERVER_BROADCAST_PACKET = 0x99;
+	public const POSITION_TRACKING_D_B_CLIENT_REQUEST_PACKET = 0x9a;
+	public const DEBUG_INFO_PACKET = 0x9b;
+	public const PACKET_VIOLATION_WARNING_PACKET = 0x9c;
+	public const MOTION_PREDICTION_HINTS_PACKET = 0x9d;
+	public const ANIMATE_ENTITY_PACKET = 0x9e;
+	public const CAMERA_SHAKE_PACKET = 0x9f;
+	public const PLAYER_FOG_PACKET = 0xa0;
+	public const CORRECT_PLAYER_MOVE_PREDICTION_PACKET = 0xa1;
+	public const ITEM_COMPONENT_PACKET = 0xa2;
+	public const FILTER_TEXT_PACKET = 0xa3;
+	public const CLIENTBOUND_DEBUG_RENDERER_PACKET = 0xa4;
+	public const SYNC_ACTOR_PROPERTY_PACKET = 0xa5;
+	public const ADD_VOLUME_ENTITY_PACKET = 0xa6;
+	public const REMOVE_VOLUME_ENTITY_PACKET = 0xa7;
+	public const SIMULATION_TYPE_PACKET = 0xa8;
+	public const NPC_DIALOGUE_PACKET = 0xa9;
 
 }

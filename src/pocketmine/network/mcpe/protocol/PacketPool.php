@@ -71,7 +71,6 @@ class PacketPool{
 		static::registerPacket(new BlockPickRequestPacket());
 		static::registerPacket(new ActorPickRequestPacket());
 		static::registerPacket(new PlayerActionPacket());
-		static::registerPacket(new ActorFallPacket());
 		static::registerPacket(new HurtArmorPacket());
 		static::registerPacket(new SetActorDataPacket());
 		static::registerPacket(new SetActorMotionPacket());
@@ -159,7 +158,6 @@ class PacketPool{
 		static::registerPacket(new LevelSoundEventPacket());
 		static::registerPacket(new LevelEventGenericPacket());
 		static::registerPacket(new LecternUpdatePacket());
-		static::registerPacket(new VideoStreamConnectPacket());
 		static::registerPacket(new AddEntityPacket());
 		static::registerPacket(new RemoveEntityPacket());
 		static::registerPacket(new ClientCacheStatusPacket());
@@ -167,7 +165,6 @@ class PacketPool{
 		static::registerPacket(new MapCreateLockedCopyPacket());
 		static::registerPacket(new StructureTemplateDataRequestPacket());
 		static::registerPacket(new StructureTemplateDataResponsePacket());
-		static::registerPacket(new UpdateBlockPropertiesPacket());
 		static::registerPacket(new ClientCacheBlobStatusPacket());
 		static::registerPacket(new ClientCacheMissResponsePacket());
 		static::registerPacket(new EducationSettingsPacket());
@@ -178,6 +175,31 @@ class PacketPool{
 		static::registerPacket(new CompletedUsingItemPacket());
 		static::registerPacket(new NetworkSettingsPacket());
 		static::registerPacket(new PlayerAuthInputPacket());
+		static::registerPacket(new CreativeContentPacket());
+		static::registerPacket(new PlayerEnchantOptionsPacket());
+		static::registerPacket(new ItemStackRequestPacket());
+		static::registerPacket(new ItemStackResponsePacket());
+		static::registerPacket(new PlayerArmorDamagePacket());
+		static::registerPacket(new CodeBuilderPacket());
+		static::registerPacket(new UpdatePlayerGameTypePacket());
+		static::registerPacket(new EmoteListPacket());
+		static::registerPacket(new PositionTrackingDBServerBroadcastPacket());
+		static::registerPacket(new PositionTrackingDBClientRequestPacket());
+		static::registerPacket(new DebugInfoPacket());
+		static::registerPacket(new PacketViolationWarningPacket());
+		static::registerPacket(new MotionPredictionHintsPacket());
+		static::registerPacket(new AnimateEntityPacket());
+		static::registerPacket(new CameraShakePacket());
+		static::registerPacket(new PlayerFogPacket());
+		static::registerPacket(new CorrectPlayerMovePredictionPacket());
+		static::registerPacket(new ItemComponentPacket());
+		static::registerPacket(new FilterTextPacket());
+		static::registerPacket(new ClientboundDebugRendererPacket());
+		static::registerPacket(new SyncActorPropertyPacket());
+		static::registerPacket(new AddVolumeEntityPacket());
+		static::registerPacket(new RemoveVolumeEntityPacket());
+		static::registerPacket(new SimulationTypePacket());
+		static::registerPacket(new NpcDialoguePacket());
 	}
 
 	/**

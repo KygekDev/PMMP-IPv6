@@ -57,15 +57,24 @@ use const SOL_TCP;
 class RCON{
 	/** @var Server */
 	private $server;
-	/** @var resource */
+	/**
+	 * @var \Socket|resource
+	 * @phpstan-var PhpSocket
+	 */
 	private $socket;
 
 	/** @var RCONInstance */
 	private $instance;
 
-	/** @var resource */
+	/**
+	 * @var \Socket|resource
+	 * @phpstan-var PhpSocket
+	 */
 	private $ipcMainSocket;
-	/** @var resource */
+	/**
+	 * @var resource
+	 * @phpstan-var PhpSocket
+	 */
 	private $ipcThreadSocket;
 
 	public function __construct(Server $server, string $password, int $port = 19132, string $interface = "0.0.0.0", int $maxClients = 50){
@@ -75,13 +84,17 @@ class RCON{
 			throw new \InvalidArgumentException("Empty password");
 		}
 
-		$this->socket = socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
+		$socket = @socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
+		if($socket === false){
+			throw new \RuntimeException("Failed to create socket:" . trim(socket_strerror(socket_last_error())));
+		}
+		$this->socket = $socket;
 
 		if(!socket_set_option($this->socket, SOL_SOCKET, SO_REUSEADDR, 1)){
 			throw new \RuntimeException("Unable to set option on socket: " . trim(socket_strerror(socket_last_error())));
 		}
 
-		if($this->socket === false or !@socket_bind($this->socket, $interface, $port) or !@socket_listen($this->socket, 5)){
+		if(!@socket_bind($this->socket, $interface, $port) or !@socket_listen($this->socket, 5)){
 			throw new \RuntimeException(trim(socket_strerror(socket_last_error())));
 		}
 

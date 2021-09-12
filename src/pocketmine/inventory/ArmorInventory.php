@@ -28,7 +28,9 @@ use pocketmine\item\Item;
 use pocketmine\network\mcpe\protocol\InventoryContentPacket;
 use pocketmine\network\mcpe\protocol\InventorySlotPacket;
 use pocketmine\network\mcpe\protocol\MobArmorEquipmentPacket;
+use pocketmine\network\mcpe\protocol\types\inventory\ItemStackWrapper;
 use pocketmine\Player;
+use function array_map;
 use function array_merge;
 
 class ArmorInventory extends BaseInventory{
@@ -96,10 +98,10 @@ class ArmorInventory extends BaseInventory{
 
 		$pk = new MobArmorEquipmentPacket();
 		$pk->entityRuntimeId = $this->getHolder()->getId();
-		$pk->head = $this->getHelmet();
-		$pk->chest = $this->getChestplate();
-		$pk->legs = $this->getLeggings();
-		$pk->feet = $this->getBoots();
+		$pk->head = ItemStackWrapper::legacy($this->getHelmet());
+		$pk->chest = ItemStackWrapper::legacy($this->getChestplate());
+		$pk->legs = ItemStackWrapper::legacy($this->getLeggings());
+		$pk->feet = ItemStackWrapper::legacy($this->getBoots());
 		$pk->encode();
 
 		foreach($target as $player){
@@ -109,7 +111,7 @@ class ArmorInventory extends BaseInventory{
 				$pk2 = new InventorySlotPacket();
 				$pk2->windowId = $player->getWindowId($this);
 				$pk2->inventorySlot = $index;
-				$pk2->item = $this->getItem($index);
+				$pk2->item = ItemStackWrapper::legacy($this->getItem($index));
 				$player->dataPacket($pk2);
 			}else{
 				$player->dataPacket($pk);
@@ -124,17 +126,17 @@ class ArmorInventory extends BaseInventory{
 
 		$pk = new MobArmorEquipmentPacket();
 		$pk->entityRuntimeId = $this->getHolder()->getId();
-		$pk->head = $this->getHelmet();
-		$pk->chest = $this->getChestplate();
-		$pk->legs = $this->getLeggings();
-		$pk->feet = $this->getBoots();
+		$pk->head = ItemStackWrapper::legacy($this->getHelmet());
+		$pk->chest = ItemStackWrapper::legacy($this->getChestplate());
+		$pk->legs = ItemStackWrapper::legacy($this->getLeggings());
+		$pk->feet = ItemStackWrapper::legacy($this->getBoots());
 		$pk->encode();
 
 		foreach($target as $player){
 			if($player === $this->getHolder()){
 				$pk2 = new InventoryContentPacket();
 				$pk2->windowId = $player->getWindowId($this);
-				$pk2->items = $this->getContents(true);
+				$pk2->items = array_map([ItemStackWrapper::class, 'legacy'], $this->getContents(true));
 				$player->dataPacket($pk2);
 			}else{
 				$player->dataPacket($pk);

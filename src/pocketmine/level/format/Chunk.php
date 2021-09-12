@@ -30,6 +30,7 @@ use pocketmine\block\BlockFactory;
 use pocketmine\entity\Entity;
 use pocketmine\level\Level;
 use pocketmine\nbt\tag\CompoundTag;
+use pocketmine\nbt\tag\IntTag;
 use pocketmine\nbt\tag\StringTag;
 use pocketmine\Player;
 use pocketmine\tile\Spawnable;
@@ -109,6 +110,7 @@ class Chunk{
 	 * @param CompoundTag[]       $entities
 	 * @param CompoundTag[]       $tiles
 	 * @param int[]               $heightMap
+	 * @phpstan-param list<int> $heightMap
 	 */
 	public function __construct(int $chunkX, int $chunkZ, array $subChunks = [], array $entities = [], array $tiles = [], string $biomeIds = "", array $heightMap = []){
 		$this->x = $chunkX;
@@ -690,13 +692,14 @@ class Chunk{
 
 			$level->timings->syncChunkLoadEntitiesTimer->startTiming();
 			foreach($this->NBTentities as $nbt){
-				if(!$nbt->hasTag("id")){ //allow mixed types (because of leveldb)
+				$idTag = $nbt->getTag("id");
+				if(!($idTag instanceof IntTag) && !($idTag instanceof StringTag)){ //allow mixed types (because of leveldb)
 					$changed = true;
 					continue;
 				}
 
 				try{
-					$entity = Entity::createEntity($nbt->getTag("id")->getValue(), $level, $nbt);
+					$entity = Entity::createEntity($idTag->getValue(), $level, $nbt);
 					if(!($entity instanceof Entity)){
 						$changed = true;
 						continue;
@@ -918,7 +921,9 @@ class Chunk{
 
 			$biomeIds = $stream->get(256);
 			if($lightPopulated){
-				$heightMap = array_values(unpack("v*", $stream->get(512)));
+				/** @var int[] $unpackedHeightMap */
+				$unpackedHeightMap = unpack("v*", $stream->get(512)); //unpack() will never fail here
+				$heightMap = array_values($unpackedHeightMap);
 			}
 		}
 
@@ -926,6 +931,7 @@ class Chunk{
 		$chunk->setGenerated($terrainGenerated);
 		$chunk->setPopulated($terrainPopulated);
 		$chunk->setLightPopulated($lightPopulated);
+		$chunk->setChanged(false);
 
 		return $chunk;
 	}

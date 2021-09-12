@@ -23,8 +23,10 @@ declare(strict_types=1);
 
 namespace pocketmine {
 
+	use Composer\InstalledVersions;
 	use pocketmine\utils\Git;
 	use pocketmine\utils\MainLogger;
+	use pocketmine\utils\Process;
 	use pocketmine\utils\ServerKiller;
 	use pocketmine\utils\Terminal;
 	use pocketmine\utils\Timezone;
@@ -34,7 +36,7 @@ namespace pocketmine {
 
 	require_once __DIR__ . '/VersionInfo.php';
 
-	const MIN_PHP_VERSION = "7.2.0";
+	const MIN_PHP_VERSION = "7.4.0";
 
 	/**
 	 * @param string $message
@@ -72,7 +74,6 @@ namespace pocketmine {
 		}
 
 		$extensions = [
-			"bcmath" => "BC Math",
 			"curl" => "cURL",
 			"ctype" => "ctype",
 			"date" => "Date",
@@ -130,6 +131,9 @@ namespace pocketmine {
 	 * @return void
 	 */
 	function emit_performance_warnings(\Logger $logger){
+		if(PHP_DEBUG !== 0){
+			$logger->warning("This PHP binary was compiled in debug mode. This has a major impact on performance.");
+		}
 		if(extension_loaded("xdebug")){
 			$logger->warning("Xdebug extension is enabled. This has a major impact on performance.");
 		}
@@ -141,6 +145,24 @@ namespace pocketmine {
 		}
 		if(\Phar::running(true) === ""){
 			$logger->warning("Non-packaged installation detected. This will degrade autoloading speed and make startup times longer.");
+		}
+		if(function_exists('opcache_get_status') && ($opcacheStatus = opcache_get_status(false)) !== false){
+			$jitEnabled = $opcacheStatus["jit"]["on"] ?? false;
+			if($jitEnabled !== false){
+				$logger->warning(<<<'JIT_WARNING'
+
+
+	--------------------------------------- ! WARNING ! ---------------------------------------
+	You're using PHP 8.0 with JIT enabled. This provides significant performance improvements.
+	HOWEVER, it is EXPERIMENTAL, and has already been seen to cause weird and unexpected bugs.
+	Proceed with caution.
+	If you want to report any bugs, make sure to mention that you are using PHP 8.0 with JIT.
+	To turn off JIT, change `opcache.jit` to `0` in your php.ini file.
+	-------------------------------------------------------------------------------------------
+
+JIT_WARNING
+);
+			}
 		}
 	}
 
@@ -162,10 +184,12 @@ namespace pocketmine {
 		if(count($messages = check_platform_dependencies()) > 0){
 			echo PHP_EOL;
 			$binary = version_compare(PHP_VERSION, "5.4") >= 0 ? PHP_BINARY : "unknown";
-			critical_error("Selected PHP binary ($binary) does not satisfy some requirements.");
+			critical_error("Selected PHP binary does not satisfy some requirements.");
 			foreach($messages as $m){
 				echo " - $m" . PHP_EOL;
 			}
+			critical_error("PHP binary used: " . $binary);
+			critical_error("Loaded php.ini: " . (($file = php_ini_loaded_file()) !== false ? $file : "none"));
 			critical_error("Please recompile PHP with the needed configuration, or refer to the installation instructions at http://pmmp.rtfd.io/en/rtfd/installation.html.");
 			echo PHP_EOL;
 			exit(1);
@@ -209,6 +233,19 @@ namespace pocketmine {
 
 		define('pocketmine\GIT_COMMIT', $gitHash);
 
+		$composerGitHash = InstalledVersions::getReference('pocketmine/pocketmine-mp');
+		if($composerGitHash !== null){
+			$currentGitHash = explode("-", \pocketmine\GIT_COMMIT)[0];
+			if($currentGitHash !== $composerGitHash){
+				critical_error("Composer dependencies and/or autoloader are out of sync.");
+				critical_error("- Current revision is $currentGitHash");
+				critical_error("- Composer dependencies were last synchronized for revision $composerGitHash");
+				critical_error("Out-of-sync Composer dependencies may result in crashes and classes not being found.");
+				critical_error("Please synchronize Composer dependencies before running the server.");
+				exit(1);
+			}
+		}
+
 		$opts = getopt("", ["data:", "plugins:", "no-wizard", "enable-ansi", "disable-ansi"]);
 
 		define('pocketmine\DATA', isset($opts["data"]) ? $opts["data"] . DIRECTORY_SEPARATOR : realpath(getcwd()) . DIRECTORY_SEPARATOR);
@@ -218,7 +255,12 @@ namespace pocketmine {
 			mkdir(\pocketmine\DATA, 0777, true);
 		}
 
-		define('pocketmine\LOCK_FILE', fopen(\pocketmine\DATA . 'server.lock', "a+b"));
+		$lockFile = fopen(\pocketmine\DATA . 'server.lock', "a+b");
+		if($lockFile === false){
+			critical_error("Unable to open server.lock file. Please check that the current user has read/write permissions to it.");
+			exit(1);
+		}
+		define('pocketmine\LOCK_FILE', $lockFile);
 		if(!flock(\pocketmine\LOCK_FILE, LOCK_EX | LOCK_NB)){
 			//wait for a shared lock to avoid race conditions if two servers started at the same time - this makes sure the
 			//other server wrote its PID and released exclusive lock before we get our lock
@@ -283,7 +325,7 @@ namespace pocketmine {
 
 			if(ThreadManager::getInstance()->stopAll() > 0){
 				$logger->debug("Some threads could not be stopped, performing a force-kill");
-				Utils::kill(getmypid());
+				Process::kill(Process::pid());
 			}
 		}while(false);
 
@@ -292,10 +334,16 @@ namespace pocketmine {
 
 		echo Terminal::$FORMAT_RESET . PHP_EOL;
 
+		if(!flock(\pocketmine\LOCK_FILE, LOCK_UN)){
+			critical_error("Failed to release the server.lock file.");
+		}
+
+		if(!fclose(\pocketmine\LOCK_FILE)){
+			critical_error("Could not close server.lock resource.");
+		}
+
 		exit($exitCode);
 	}
 
-	if(!defined('pocketmine\_PHPSTAN_ANALYSIS')){
-		\pocketmine\server();
-	}
+	\pocketmine\server();
 }

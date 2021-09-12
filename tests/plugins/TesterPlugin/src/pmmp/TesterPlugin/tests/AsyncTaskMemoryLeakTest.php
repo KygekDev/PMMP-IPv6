@@ -25,14 +25,15 @@ namespace pmmp\TesterPlugin\tests;
 
 use pmmp\TesterPlugin\Test;
 use pocketmine\scheduler\AsyncTask;
+use function usleep;
 
 class AsyncTaskMemoryLeakTest extends Test{
 
-	public function run(){
+	public function run() : void{
 		$this->getPlugin()->getServer()->getAsyncPool()->submitTask(new TestAsyncTask());
 	}
 
-	public function tick(){
+	public function tick() : void{
 		if(TestAsyncTask::$destroyed === true){
 			$this->setResult(Test::RESULT_OK);
 		}
@@ -48,6 +49,7 @@ class AsyncTaskMemoryLeakTest extends Test{
 }
 
 class TestAsyncTask extends AsyncTask{
+	/** @var bool */
 	public static $destroyed = false;
 
 	public function onRun(){

@@ -76,11 +76,9 @@ abstract class Worker extends \Worker{
 	}
 
 	/**
-	 * @param int|null $options TODO: pthreads bug
-	 *
 	 * @return bool
 	 */
-	public function start(?int $options = PTHREADS_INHERIT_ALL){
+	public function start(int $options = PTHREADS_INHERIT_ALL){
 		ThreadManager::getInstance()->add($this);
 
 		if($this->getClassLoader() === null){
@@ -97,7 +95,7 @@ abstract class Worker extends \Worker{
 	public function quit(){
 		$this->isKilled = true;
 
-		if($this->isRunning()){
+		if(!$this->isShutdown()){
 			while($this->unstack() !== null);
 			$this->notify();
 			$this->shutdown();

@@ -29,8 +29,11 @@ use pocketmine\inventory\transaction\action\DropItemAction;
 use pocketmine\inventory\transaction\action\InventoryAction;
 use pocketmine\inventory\transaction\action\SlotChangeAction;
 use pocketmine\item\Item;
-use pocketmine\network\mcpe\protocol\InventoryTransactionPacket;
+use pocketmine\network\mcpe\NetworkBinaryStream;
+use pocketmine\network\mcpe\protocol\types\inventory\ItemStackWrapper;
+use pocketmine\network\mcpe\protocol\types\inventory\UIInventorySlotOffset;
 use pocketmine\Player;
+use function array_key_exists;
 
 class NetworkInventoryAction{
 	public const SOURCE_CONTAINER = 0;
@@ -77,15 +80,15 @@ class NetworkInventoryAction{
 	public $sourceFlags = 0;
 	/** @var int */
 	public $inventorySlot;
-	/** @var Item */
+	/** @var ItemStackWrapper */
 	public $oldItem;
-	/** @var Item */
+	/** @var ItemStackWrapper */
 	public $newItem;
 
 	/**
 	 * @return $this
 	 */
-	public function read(InventoryTransactionPacket $packet){
+	public function read(NetworkBinaryStream $packet){
 		$this->sourceType = $packet->getUnsignedVarInt();
 
 		switch($this->sourceType){
@@ -105,8 +108,8 @@ class NetworkInventoryAction{
 		}
 
 		$this->inventorySlot = $packet->getUnsignedVarInt();
-		$this->oldItem = $packet->getSlot();
-		$this->newItem = $packet->getSlot();
+		$this->oldItem = ItemStackWrapper::read($packet);
+		$this->newItem = ItemStackWrapper::read($packet);
 
 		return $this;
 	}
@@ -114,7 +117,7 @@ class NetworkInventoryAction{
 	/**
 	 * @return void
 	 */
-	public function write(InventoryTransactionPacket $packet){
+	public function write(NetworkBinaryStream $packet){
 		$packet->putUnsignedVarInt($this->sourceType);
 
 		switch($this->sourceType){
@@ -134,8 +137,8 @@ class NetworkInventoryAction{
 		}
 
 		$packet->putUnsignedVarInt($this->inventorySlot);
-		$packet->putSlot($this->oldItem);
-		$packet->putSlot($this->newItem);
+		$this->oldItem->write($packet);
+		$this->newItem->write($packet);
 	}
 
 	/**
@@ -144,28 +147,30 @@ class NetworkInventoryAction{
 	 * @throws \UnexpectedValueException
 	 */
 	public function createInventoryAction(Player $player){
-		if($this->oldItem->equalsExact($this->newItem)){
+		$oldItem = $this->oldItem->getItemStack();
+		$newItem = $this->newItem->getItemStack();
+		if($oldItem->equalsExact($newItem)){
 			//filter out useless noise in 1.13
 			return null;
 		}
 		switch($this->sourceType){
 			case self::SOURCE_CONTAINER:
 				if($this->windowId === ContainerIds::UI and $this->inventorySlot > 0){
-					if($this->inventorySlot === 50){
+					if($this->inventorySlot === UIInventorySlotOffset::CREATED_ITEM_OUTPUT){
 						return null; //useless noise
 					}
-					if($this->inventorySlot >= 28 and $this->inventorySlot <= 31){
+					if(array_key_exists($this->inventorySlot, UIInventorySlotOffset::CRAFTING2X2_INPUT)){
 						$window = $player->getCraftingGrid();
 						if($window->getGridWidth() !== CraftingGrid::SIZE_SMALL){
 							throw new \UnexpectedValueException("Expected small crafting grid");
 						}
-						$slot = $this->inventorySlot - 28;
-					}elseif($this->inventorySlot >= 32 and $this->inventorySlot <= 40){
+						$slot = UIInventorySlotOffset::CRAFTING2X2_INPUT[$this->inventorySlot];
+					}elseif(array_key_exists($this->inventorySlot, UIInventorySlotOffset::CRAFTING3X3_INPUT)){
 						$window = $player->getCraftingGrid();
 						if($window->getGridWidth() !== CraftingGrid::SIZE_BIG){
 							throw new \UnexpectedValueException("Expected big crafting grid");
 						}
-						$slot = $this->inventorySlot - 32;
+						$slot = UIInventorySlotOffset::CRAFTING3X3_INPUT[$this->inventorySlot];
 					}else{
 						throw new \UnexpectedValueException("Unhandled magic UI slot offset $this->inventorySlot");
 					}
@@ -174,7 +179,7 @@ class NetworkInventoryAction{
 					$slot = $this->inventorySlot;
 				}
 				if($window !== null){
-					return new SlotChangeAction($window, $slot, $this->oldItem, $this->newItem);
+					return new SlotChangeAction($window, $slot, $oldItem, $newItem);
 				}
 
 				throw new \UnexpectedValueException("Player " . $player->getName() . " has no open container with window ID $this->windowId");
@@ -183,7 +188,7 @@ class NetworkInventoryAction{
 					throw new \UnexpectedValueException("Only expecting drop-item world actions from the client!");
 				}
 
-				return new DropItemAction($this->newItem);
+				return new DropItemAction($newItem);
 			case self::SOURCE_CREATIVE:
 				switch($this->inventorySlot){
 					case self::ACTION_MAGIC_SLOT_CREATIVE_DELETE_ITEM:
@@ -197,7 +202,7 @@ class NetworkInventoryAction{
 
 				}
 
-				return new CreativeInventoryAction($this->oldItem, $this->newItem, $type);
+				return new CreativeInventoryAction($oldItem, $newItem, $type);
 			case self::SOURCE_TODO:
 				//These types need special handling.
 				switch($this->windowId){

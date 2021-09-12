@@ -25,13 +25,16 @@ namespace pocketmine\scheduler;
 
 use pocketmine\network\mcpe\protocol\ProtocolInfo;
 use pocketmine\Server;
+use pocketmine\utils\AssumptionFailedError;
 use pocketmine\utils\Internet;
+use pocketmine\utils\Process;
 use pocketmine\utils\Utils;
 use pocketmine\utils\UUID;
 use pocketmine\utils\VersionString;
 use function array_values;
 use function count;
 use function json_encode;
+use function json_last_error_msg;
 use function md5;
 use function microtime;
 use function php_uname;
@@ -131,16 +134,16 @@ class SendUsageTask extends AsyncTask{
 				$data["players"] = [
 					"count" => count($players),
 					"limit" => $server->getMaxPlayers(),
-					"currentList" => $players,
+					"currentList" => array_values($players),
 					"historyList" => array_values($playerList)
 				];
 
-				$info = Utils::getMemoryUsage(true);
+				$info = Process::getAdvancedMemoryUsage();
 				$data["system"] = [
 					"mainMemory" => $info[0],
 					"totalMemory" => $info[1],
 					"availableMemory" => $info[2],
-					"threadCount" => Utils::getThreadCount()
+					"threadCount" => Process::getThreadCount()
 				];
 
 				break;
@@ -151,7 +154,9 @@ class SendUsageTask extends AsyncTask{
 		}
 
 		$this->endpoint = $endpoint . "api/post";
-		$this->data = json_encode($data/*, JSON_PRETTY_PRINT*/);
+		$data = json_encode($data/*, JSON_PRETTY_PRINT*/);
+		if($data === false) throw new AssumptionFailedError("Statistics JSON should never fail to encode: " . json_last_error_msg());
+		$this->data = $data;
 	}
 
 	public function onRun(){

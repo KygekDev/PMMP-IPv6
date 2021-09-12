@@ -42,6 +42,7 @@ use pocketmine\nbt\tag\NamedTag;
 use pocketmine\nbt\tag\ShortTag;
 use pocketmine\nbt\tag\StringTag;
 use pocketmine\Player;
+use pocketmine\utils\AssumptionFailedError;
 use pocketmine\utils\Binary;
 use function array_map;
 use function base64_decode;
@@ -338,7 +339,11 @@ class Item implements ItemIds, \JsonSerializable{
 			}
 		}
 
-		$this->setNamedTagEntry($ench);
+		if($ench->getCount() > 0){
+			$this->setNamedTagEntry($ench);
+		}else{
+			$this->removeNamedTagEntry(self::TAG_ENCH);
+		}
 	}
 
 	public function removeEnchantments() : void{
@@ -475,7 +480,12 @@ class Item implements ItemIds, \JsonSerializable{
 	public function getLore() : array{
 		$display = $this->getNamedTagEntry(self::TAG_DISPLAY);
 		if($display instanceof CompoundTag and ($lore = $display->getListTag(self::TAG_DISPLAY_LORE)) !== null){
-			return $lore->getAllValues();
+			return array_map(function(NamedTag $line) : string{
+				if(!($line instanceof StringTag)){
+					throw new AssumptionFailedError("Nobody bothered to handle this error case and we can't fix it until PM4, oops ... #blameshoghi");
+				}
+				return $line->getValue();
+			}, $lore->getValue());
 		}
 
 		return [];
@@ -647,6 +657,16 @@ class Item implements ItemIds, \JsonSerializable{
 	 */
 	public function getFuelTime() : int{
 		return 0;
+	}
+
+	/**
+	 * Returns an item after burning fuel
+	 */
+	public function getFuelResidue() : Item{
+		$item = clone $this;
+		$item->pop();
+
+		return $item;
 	}
 
 	/**
@@ -852,7 +872,7 @@ class Item implements ItemIds, \JsonSerializable{
 			$item = ItemFactory::get($idTag->getValue(), $meta, $count);
 		}elseif($idTag instanceof StringTag){ //PC item save format
 			try{
-				$item = ItemFactory::fromString($idTag->getValue());
+				$item = ItemFactory::fromStringSingle($idTag->getValue());
 			}catch(\InvalidArgumentException $e){
 				//TODO: improve error handling
 				return ItemFactory::get(Item::AIR, 0, 0);

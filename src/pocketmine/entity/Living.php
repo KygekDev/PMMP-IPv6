@@ -45,6 +45,7 @@ use pocketmine\nbt\tag\CompoundTag;
 use pocketmine\nbt\tag\FloatTag;
 use pocketmine\nbt\tag\IntTag;
 use pocketmine\nbt\tag\ListTag;
+use pocketmine\nbt\tag\ShortTag;
 use pocketmine\network\mcpe\protocol\ActorEventPacket;
 use pocketmine\network\mcpe\protocol\LevelSoundEventPacket;
 use pocketmine\network\mcpe\protocol\MobEffectPacket;
@@ -97,17 +98,15 @@ abstract class Living extends Entity implements Damageable{
 		//TODO: load/save armor inventory contents
 		$this->armorInventory->setEventProcessor(new ArmorInventoryEventProcessor($this));
 
-		$health = $this->getMaxHealth();
-
 		if($this->namedtag->hasTag("HealF", FloatTag::class)){
 			$health = $this->namedtag->getFloat("HealF");
 			$this->namedtag->removeTag("HealF");
-		}elseif($this->namedtag->hasTag("Health")){
-			$healthTag = $this->namedtag->getTag("Health");
-			$health = (float) $healthTag->getValue(); //Older versions of PocketMine-MP incorrectly saved this as a short instead of a float
-			if(!($healthTag instanceof FloatTag)){
-				$this->namedtag->removeTag("Health");
-			}
+		}elseif($this->namedtag->hasTag("Health", ShortTag::class)){
+			//Older versions of PocketMine-MP incorrectly saved this as a short instead of a float
+			$health = $this->namedtag->getShort("Health");
+			$this->namedtag->removeTag("Health");
+		}else{
+			$health = $this->namedtag->getFloat("Health", $this->getMaxHealth());
 		}
 
 		$this->setHealth($health);
@@ -191,7 +190,7 @@ abstract class Living extends Entity implements Damageable{
 	public function hasLineOfSight(Entity $entity) : bool{
 		//TODO: head height
 		return true;
-		//return $this->getLevel()->rayTraceBlocks(Vector3::createVector($this->x, $this->y + $this->height, $this->z), Vector3::createVector($entity->x, $entity->y + $entity->height, $entity->z)) === null;
+		//return $this->getLevelNonNull()->rayTraceBlocks(Vector3::createVector($this->x, $this->y + $this->height, $this->z), Vector3::createVector($entity->x, $entity->y + $entity->height, $entity->z)) === null;
 	}
 
 	/**
@@ -364,13 +363,20 @@ abstract class Living extends Entity implements Damageable{
 			return false;
 		}
 
+		$this->applyConsumptionResults($consumable);
+		return true;
+	}
+
+	/**
+	 * Applies effects from consuming the object. This shouldn't do any can-consume checks (those are expected to be
+	 * handled by the caller).
+	 */
+	protected function applyConsumptionResults(Consumable $consumable) : void{
 		foreach($consumable->getAdditionalEffects() as $effect){
 			$this->addEffect($effect);
 		}
 
 		$consumable->onConsume($this);
-
-		return true;
 	}
 
 	/**
@@ -436,6 +442,12 @@ abstract class Living extends Entity implements Damageable{
 	 * to effects or armour.
 	 */
 	public function applyDamageModifiers(EntityDamageEvent $source) : void{
+		if($this->lastDamageCause !== null and $this->attackTime > 0){
+			if($this->lastDamageCause->getBaseDamage() >= $source->getBaseDamage()){
+				$source->setCancelled();
+			}
+			$source->setModifier(-$this->lastDamageCause->getBaseDamage(), EntityDamageEvent::MODIFIER_PREVIOUS_DAMAGE_COOLDOWN);
+		}
 		if($source->canBeReducedByArmor()){
 			//MCPE uses the same system as PC did pre-1.9
 			$source->setModifier(-$source->getFinalDamage() * $this->getArmorPoints() * 0.04, EntityDamageEvent::MODIFIER_ARMOR);
@@ -514,11 +526,6 @@ abstract class Living extends Entity implements Damageable{
 	public function attack(EntityDamageEvent $source) : void{
 		if($this->noDamageTicks > 0){
 			$source->setCancelled();
-		}elseif($this->attackTime > 0){
-			$lastCause = $this->getLastDamageCause();
-			if($lastCause !== null and $lastCause->getBaseDamage() >= $source->getBaseDamage()){
-				$source->setCancelled();
-			}
 		}
 
 		if($this->hasEffect(Effect::FIRE_RESISTANCE) and (
@@ -550,20 +557,15 @@ abstract class Living extends Entity implements Damageable{
 
 		$this->attackTime = $source->getAttackCooldown();
 
-		if($source instanceof EntityDamageByEntityEvent){
-			$e = $source->getDamager();
-			if($source instanceof EntityDamageByChildEntityEvent){
-				$e = $source->getChild();
-			}
-
+		if($source instanceof EntityDamageByChildEntityEvent){
+			$e = $source->getChild();
 			if($e !== null){
-				if((
-					$source->getCause() === EntityDamageEvent::CAUSE_PROJECTILE or
-					$source->getCause() === EntityDamageEvent::CAUSE_ENTITY_ATTACK
-				) and $e->isOnFire()){
-					$this->setOnFire(2 * $this->level->getDifficulty());
-				}
-
+				$motion = $e->getMotion();
+				$this->knockBack($e, $source->getBaseDamage(), $motion->x, $motion->z, $source->getKnockBack());
+			}
+		}elseif($source instanceof EntityDamageByEntityEvent){
+			$e = $source->getDamager();
+			if($e !== null){
 				$deltaX = $this->x - $e->x;
 				$deltaZ = $this->z - $e->z;
 				$this->knockBack($e, $source->getBaseDamage(), $deltaX, $deltaZ, $source->getKnockBack());
@@ -612,15 +614,14 @@ abstract class Living extends Entity implements Damageable{
 	}
 
 	protected function onDeath() : void{
-		$ev = new EntityDeathEvent($this, $this->getDrops());
+		$ev = new EntityDeathEvent($this, $this->getDrops(), $this->getXpDropAmount());
 		$ev->call();
 		foreach($ev->getDrops() as $item){
-			$this->getLevel()->dropItem($this, $item);
+			$this->getLevelNonNull()->dropItem($this, $item);
 		}
 
 		//TODO: check death conditions (must have been damaged by player < 5 seconds from death)
-		//TODO: allow this number to be manipulated during EntityDeathEvent
-		$this->level->dropExperience($this, $this->getXpDropAmount());
+		$this->level->dropExperience($this, $ev->getXpDropAmount());
 	}
 
 	protected function onDeathUpdate(int $tickDiff) : bool{

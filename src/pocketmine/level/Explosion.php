@@ -74,7 +74,7 @@ class Explosion{
 			throw new \InvalidArgumentException("Position does not have a valid world");
 		}
 		$this->source = $center;
-		$this->level = $center->getLevel();
+		$this->level = $center->getLevelNonNull();
 
 		if($size <= 0){
 			throw new \InvalidArgumentException("Explosion radius must be greater than 0, got $size");
@@ -132,8 +132,11 @@ class Explosion{
 							if($blockId !== 0){
 								$blastForce -= (BlockFactory::$blastResistance[$blockId] / 5 + 0.3) * $this->stepLen;
 								if($blastForce > 0){
-									if(!isset($this->affectedBlocks[$index = Level::blockHash($vBlock->x, $vBlock->y, $vBlock->z)])){
-										$this->affectedBlocks[$index] = BlockFactory::get($blockId, $this->subChunkHandler->currentSubChunk->getBlockData($vBlock->x & 0x0f, $vBlock->y & 0x0f, $vBlock->z & 0x0f), $vBlock);
+									if(!isset($this->affectedBlocks[Level::blockHash($vBlock->x, $vBlock->y, $vBlock->z)])){
+										$_block = BlockFactory::get($blockId, $this->subChunkHandler->currentSubChunk->getBlockData($vBlock->x & 0x0f, $vBlock->y & 0x0f, $vBlock->z & 0x0f), $vBlock);
+										foreach($_block->getAffectedBlocks() as $_affectedBlock){
+											$this->affectedBlocks[Level::blockHash($_affectedBlock->x, $_affectedBlock->y, $_affectedBlock->z)] = $_affectedBlock;
+										}
 									}
 								}
 							}
@@ -151,7 +154,6 @@ class Explosion{
 	 * and creating sounds and particles.
 	 */
 	public function explodeB() : bool{
-		$send = [];
 		$updateBlocks = [];
 
 		$source = (new Vector3($this->source->x, $this->source->y, $this->source->z))->floor();
@@ -229,7 +231,9 @@ class Explosion{
 
 				$t->close();
 			}
+		}
 
+		foreach($this->affectedBlocks as $block){
 			$pos = new Vector3($block->x, $block->y, $block->z);
 
 			for($side = 0; $side <= 5; $side++){
@@ -249,7 +253,6 @@ class Explosion{
 					$updateBlocks[$index] = true;
 				}
 			}
-			$send[] = new Vector3($block->x - $source->x, $block->y - $source->y, $block->z - $source->z);
 		}
 
 		$this->level->addParticle(new HugeExplodeSeedParticle($source));

@@ -131,7 +131,11 @@ class LevelDB extends BaseLevelProvider{
 			throw new LevelException("Truncated level.dat");
 		}
 		$nbt = new LittleEndianNBTStream();
-		$levelData = $nbt->read(substr($rawLevelData, 8));
+		try{
+			$levelData = $nbt->read(substr($rawLevelData, 8));
+		}catch(\UnexpectedValueException $e){
+			throw new LevelException("Invalid level.dat (" . $e->getMessage() . ")", 0, $e);
+		}
 		if($levelData instanceof CompoundTag){
 			$this->levelData = $levelData;
 		}else{
@@ -179,8 +183,6 @@ class LevelDB extends BaseLevelProvider{
 		if(!$this->levelData->hasTag("generatorOptions", StringTag::class)){
 			$this->levelData->setString("generatorOptions", "");
 		}
-
-		$db->close();
 	}
 
 	public static function getProviderName() : string{
@@ -265,9 +267,6 @@ class LevelDB extends BaseLevelProvider{
 				$db->put(self::ENTRY_FLAT_WORLD_LAYERS, $out); //Add vanilla flatworld layers to allow terrain generation by MCPE to continue seamlessly
 			}
 		}
-
-		$db->close();
-
 	}
 
 	public function saveLevelData(){
@@ -301,7 +300,8 @@ class LevelDB extends BaseLevelProvider{
 	protected function readChunk(int $chunkX, int $chunkZ) : ?Chunk{
 		$index = LevelDB::chunkIndex($chunkX, $chunkZ);
 
-		if(!$this->chunkExists($chunkX, $chunkZ)){
+		$chunkVersionRaw = $this->db->get($index . self::TAG_VERSION);
+		if($chunkVersionRaw === false){
 			return null;
 		}
 
@@ -316,7 +316,7 @@ class LevelDB extends BaseLevelProvider{
 		/** @var bool $lightPopulated */
 		$lightPopulated = true;
 
-		$chunkVersion = ord($this->db->get($index . self::TAG_VERSION));
+		$chunkVersion = ord($chunkVersionRaw);
 		$hasBeenUpgraded = $chunkVersion < self::CURRENT_LEVEL_CHUNK_VERSION;
 
 		$binaryStream = new BinaryStream();
@@ -363,12 +363,18 @@ class LevelDB extends BaseLevelProvider{
 				if(($maps2d = $this->db->get($index . self::TAG_DATA_2D)) !== false){
 					$binaryStream->setBuffer($maps2d, 0);
 
-					$heightMap = array_values(unpack("v*", $binaryStream->get(512)));
+					/** @var int[] $unpackedHeightMap */
+					$unpackedHeightMap = unpack("v*", $binaryStream->get(512)); //unpack() will never fail here
+					$heightMap = array_values($unpackedHeightMap);
 					$biomeIds = $binaryStream->get(256);
 				}
 				break;
 			case 2: // < MCPE 1.0
-				$binaryStream->setBuffer($this->db->get($index . self::TAG_LEGACY_TERRAIN));
+				$legacyTerrain = $this->db->get($index . self::TAG_LEGACY_TERRAIN);
+				if($legacyTerrain === false){
+					throw new CorruptedChunkException("Expected to find a LEGACY_TERRAIN key for this chunk version, but none found");
+				}
+				$binaryStream->setBuffer($legacyTerrain);
 				$fullIds = $binaryStream->get(32768);
 				$fullData = $binaryStream->get(16384);
 				$fullSkyLight = $binaryStream->get(16384);
@@ -402,8 +408,13 @@ class LevelDB extends BaseLevelProvider{
 					$subChunks[$yy] = new SubChunk($ids, $data, $skyLight, $blockLight);
 				}
 
-				$heightMap = array_values(unpack("C*", $binaryStream->get(256)));
-				$biomeIds = ChunkUtils::convertBiomeColors(array_values(unpack("N*", $binaryStream->get(1024))));
+				/** @var int[] $unpackedHeightMap */
+				$unpackedHeightMap = unpack("C*", $binaryStream->get(256)); //unpack() will never fail here, but static analysers don't know that
+				$heightMap = array_values($unpackedHeightMap);
+
+				/** @var int[] $unpackedBiomeIds */
+				$unpackedBiomeIds = unpack("N*", $binaryStream->get(1024)); //nor here
+				$biomeIds = ChunkUtils::convertBiomeColors(array_values($unpackedBiomeIds));
 				break;
 			default:
 				//TODO: set chunks read-only so the version on disk doesn't get overwritten
@@ -539,6 +550,6 @@ class LevelDB extends BaseLevelProvider{
 	}
 
 	public function close(){
-		$this->db->close();
+		unset($this->db);
 	}
 }

@@ -60,7 +60,10 @@ class RCONInstance extends Thread{
 
 	/** @var bool */
 	private $stop;
-	/** @var resource */
+	/**
+	 * @var \Socket|resource
+	 * @phpstan-var PhpSocket
+	 */
 	private $socket;
 	/** @var string */
 	private $password;
@@ -68,16 +71,21 @@ class RCONInstance extends Thread{
 	private $maxClients;
 	/** @var \ThreadedLogger */
 	private $logger;
-	/** @var resource */
+	/**
+	 * @var \Socket|resource
+	 * @phpstan-var PhpSocket
+	 */
 	private $ipcSocket;
 	/** @var SleeperNotifier|null */
 	private $notifier;
 
 	/**
-	 * @param resource             $socket
-	 * @param resource             $ipcSocket
+	 * @param \Socket|resource             $socket
+	 * @param \Socket|resource             $ipcSocket
+	 * @phpstan-param PhpSocket $socket
+	 * @phpstan-param PhpSocket $ipcSocket
 	 */
-	public function __construct($socket, string $password, int $maxClients = 50, \ThreadedLogger $logger, $ipcSocket, ?SleeperNotifier $notifier){
+	public function __construct($socket, string $password, int $maxClients, \ThreadedLogger $logger, $ipcSocket, ?SleeperNotifier $notifier){
 		$this->stop = false;
 		$this->cmd = "";
 		$this->response = "";
@@ -92,7 +100,8 @@ class RCONInstance extends Thread{
 	}
 
 	/**
-	 * @param resource $client
+	 * @param \Socket|resource $client
+	 * @phpstan-param PhpSocket $client
 	 *
 	 * @return int|false
 	 */
@@ -105,10 +114,11 @@ class RCONInstance extends Thread{
 	}
 
 	/**
-	 * @param resource $client
+	 * @param \Socket|resource $client
 	 * @param int      $requestID reference parameter
 	 * @param int      $packetType reference parameter
 	 * @param string   $payload reference parameter
+	 * @phpstan-param PhpSocket $client
 	 *
 	 * @return bool
 	 */
@@ -165,9 +175,12 @@ class RCONInstance extends Thread{
 	public function run(){
 		$this->registerClassLoader();
 
-		/** @var resource[] $clients */
+		/**
+		 * @var \Socket[]|resource[] $clients
+		 * @phpstan-var array<int, PhpSocket> $clients
+		 */
 		$clients = [];
-		/** @var int[] $authenticated */
+		/** @var bool[] $authenticated */
 		$authenticated = [];
 		/** @var float[] $timeouts */
 		$timeouts = [];
@@ -265,7 +278,8 @@ class RCONInstance extends Thread{
 	}
 
 	/**
-	 * @param resource $client
+	 * @param \Socket|resource $client
+	 * @phpstan-param PhpSocket $client
 	 */
 	private function disconnectClient($client) : void{
 		socket_getpeername($client, $ip, $port);

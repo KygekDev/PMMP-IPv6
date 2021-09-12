@@ -24,21 +24,23 @@ declare(strict_types=1);
 namespace pocketmine\build\make_release;
 
 use pocketmine\utils\VersionString;
+use function count;
 use function dirname;
 use function fgets;
 use function file_get_contents;
 use function file_put_contents;
+use function fwrite;
 use function preg_replace;
 use function sleep;
 use function sprintf;
 use function system;
 use const pocketmine\BASE_VERSION;
+use const STDERR;
 use const STDIN;
 
 require_once dirname(__DIR__) . '/vendor/autoload.php';
 
-
-function replaceVersion(string $versionInfoPath, string $newVersion, bool $isDev) : void{
+function replaceVersion(string $versionInfoPath, string $newVersion, bool $isDev, string $channel) : void{
 	$versionInfo = file_get_contents($versionInfoPath);
 	$versionInfo = preg_replace(
 		$pattern = '/^const BASE_VERSION = "(\d+)\.(\d+)\.(\d+)(?:-(.*))?";$/m',
@@ -50,6 +52,11 @@ function replaceVersion(string $versionInfoPath, string $newVersion, bool $isDev
 		'const IS_DEVELOPMENT_BUILD = ' . ($isDev ? 'true' : 'false') . ';',
 		$versionInfo
 	);
+	$versionInfo = preg_replace(
+		'/^const BUILD_CHANNEL = ".*";$/m',
+		'const BUILD_CHANNEL = "' . $channel . '";',
+		$versionInfo
+	);
 	file_put_contents($versionInfoPath, $versionInfo);
 }
 
@@ -58,8 +65,12 @@ function replaceVersion(string $versionInfoPath, string $newVersion, bool $isDev
  * @phpstan-param list<string> $argv
  */
 function main(array $argv) : void{
-	if(isset($argv[1])){
-		$currentVer = new VersionString($argv[1]);
+	if(count($argv) < 2){
+		fwrite(STDERR, "Arguments: <channel> [release version]\n");
+		exit(1);
+	}
+	if(isset($argv[2])){
+		$currentVer = new VersionString($argv[2]);
 	}else{
 		$currentVer = new VersionString(BASE_VERSION);
 	}
@@ -70,15 +81,20 @@ function main(array $argv) : void{
 		$currentVer->getPatch() + 1
 	));
 
-	$versionInfoPath = dirname(__DIR__) . '/src/pocketmine/VersionInfo.php';
-	replaceVersion($versionInfoPath, $currentVer->getBaseVersion(), false);
-	
+	echo "About to tag version $currentVer. Next version will be $nextVer.\n";
 	echo "please add appropriate notes to the changelog and press enter...";
 	fgets(STDIN);
 	system('git add "' . dirname(__DIR__) . '/changelogs"');
+	system('git diff --cached --quiet "' . dirname(__DIR__) . '/changelogs"', $result);
+	if($result === 0){
+		echo "error: no changelog changes detected; aborting\n";
+		exit(1);
+	}
+	$versionInfoPath = dirname(__DIR__) . '/src/pocketmine/VersionInfo.php';
+	replaceVersion($versionInfoPath, $currentVer->getBaseVersion(), false, $argv[1]);
 	system('git commit -m "Release ' . $currentVer->getBaseVersion() . '" --include "' . $versionInfoPath . '"');
 	system('git tag ' . $currentVer->getBaseVersion());
-	replaceVersion($versionInfoPath, $nextVer->getBaseVersion(), true);
+	replaceVersion($versionInfoPath, $nextVer->getBaseVersion(), true, "");
 	system('git add "' . $versionInfoPath . '"');
 	system('git commit -m "' . $nextVer->getBaseVersion() . ' is next" --include "' . $versionInfoPath . '"');
 	echo "pushing changes in 5 seconds\n";
@@ -86,6 +102,4 @@ function main(array $argv) : void{
 	system('git push origin HEAD ' . $currentVer->getBaseVersion());
 }
 
-if(!defined('pocketmine\_PHPSTAN_ANALYSIS')){
-	main($argv);
-}
+main($argv);

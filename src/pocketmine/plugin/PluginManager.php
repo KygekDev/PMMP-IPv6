@@ -37,6 +37,7 @@ use pocketmine\permission\Permission;
 use pocketmine\permission\PermissionManager;
 use pocketmine\Server;
 use pocketmine\timings\TimingsHandler;
+use pocketmine\utils\AssumptionFailedError;
 use pocketmine\utils\Utils;
 use function array_intersect;
 use function array_map;
@@ -50,6 +51,7 @@ use function file_exists;
 use function get_class;
 use function gettype;
 use function implode;
+use function in_array;
 use function is_a;
 use function is_array;
 use function is_bool;
@@ -57,12 +59,12 @@ use function is_dir;
 use function is_string;
 use function is_subclass_of;
 use function iterator_to_array;
+use function mb_strtoupper;
 use function mkdir;
 use function shuffle;
 use function stripos;
 use function strpos;
 use function strtolower;
-use function strtoupper;
 use const DIRECTORY_SEPARATOR;
 
 /**
@@ -228,6 +230,7 @@ class PluginManager{
 		shuffle($files); //this prevents plugins implicitly relying on the filesystem name order when they should be using dependency properties
 		foreach($loaders as $loader){
 			foreach($files as $file){
+				if(!is_string($file)) throw new AssumptionFailedError("FilesystemIterator current should be string when using CURRENT_AS_PATHNAME");
 				if(!$loader->canLoadPlugin($file)){
 					continue;
 				}
@@ -254,6 +257,14 @@ class PluginManager{
 						$this->server->getLogger()->error($this->server->getLanguage()->translateString("pocketmine.plugin.loadError", [
 							$name,
 							$this->server->getLanguage()->translateString("%pocketmine.plugin.incompatibleAPI", [implode(", ", $description->getCompatibleApis())])
+						]));
+						continue;
+					}
+
+					if(count($description->getCompatibleOperatingSystems()) > 0 and !in_array(Utils::getOS(), $description->getCompatibleOperatingSystems(), true)) {
+						$this->server->getLogger()->error($this->server->getLanguage()->translateString("pocketmine.plugin.loadError", [
+							$name,
+							$this->server->getLanguage()->translateString("%pocketmine.plugin.incompatibleOS", [implode(", ", $description->getCompatibleOperatingSystems())])
 						]));
 						continue;
 					}
@@ -368,7 +379,7 @@ class PluginManager{
 			if($version !== $serverString){
 				$pluginApi = array_pad(explode("-", $version, 2), 2, ""); //0 = version, 1 = suffix (optional)
 
-				if(strtoupper($pluginApi[1]) !== strtoupper($serverApi[1])){ //Different release phase (alpha vs. beta) or phase build (alpha.1 vs alpha.2)
+				if(mb_strtoupper($pluginApi[1]) !== mb_strtoupper($serverApi[1])){ //Different release phase (alpha vs. beta) or phase build (alpha.1 vs alpha.2)
 					continue;
 				}
 
@@ -690,9 +701,18 @@ class PluginManager{
 				}
 
 				$handlerClosure = $method->getClosure($listener);
+				if($handlerClosure === null) throw new AssumptionFailedError("This should never happen");
 
 				try{
-					$eventClass = $parameters[0]->getClass();
+					$paramType = $parameters[0]->getType();
+					//isBuiltin() returns false for builtin classes ..................
+					if($paramType instanceof \ReflectionNamedType && !$paramType->isBuiltin()){
+						/** @phpstan-var class-string $paramClass */
+						$paramClass = $paramType->getName();
+						$eventClass = new \ReflectionClass($paramClass);
+					}else{
+						$eventClass = null;
+					}
 				}catch(\ReflectionException $e){ //class doesn't exist
 					if(isset($tags["softDepend"]) && !isset($this->plugins[$tags["softDepend"]])){
 						$this->server->getLogger()->debug("Not registering @softDepend listener " . Utils::getNiceClosureName($handlerClosure) . "() because plugin \"" . $tags["softDepend"] . "\" not found");
@@ -740,15 +760,6 @@ class PluginManager{
 	public function registerEvent(string $event, Listener $listener, int $priority, EventExecutor $executor, Plugin $plugin, bool $ignoreCancelled = false) : void{
 		if(!is_subclass_of($event, Event::class)){
 			throw new PluginException($event . " is not an Event");
-		}
-
-		$tags = Utils::parseDocComment((string) (new \ReflectionClass($event))->getDocComment());
-		if(isset($tags["deprecated"]) and $this->server->getProperty("settings.deprecated-verbose", true)){
-			$this->server->getLogger()->warning($this->server->getLanguage()->translateString("pocketmine.plugin.deprecatedEvent", [
-				$plugin->getName(),
-				$event,
-				get_class($listener) . "->" . ($executor instanceof MethodEventExecutor ? $executor->getMethod() : "<unknown>")
-			]));
 		}
 
 		if(!$plugin->isEnabled()){

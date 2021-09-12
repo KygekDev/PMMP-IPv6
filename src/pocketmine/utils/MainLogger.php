@@ -201,12 +201,12 @@ class MainLogger extends \AttachableThreadedLogger{
 		$this->synchronized(function() use ($e, $trace) : void{
 			$this->critical(self::printExceptionMessage($e));
 			foreach(Utils::printableTrace($trace) as $line){
-				$this->debug($line, true);
+				$this->critical($line);
 			}
 			for($prev = $e->getPrevious(); $prev !== null; $prev = $prev->getPrevious()){
-				$this->debug("Previous: " . self::printExceptionMessage($prev), true);
+				$this->critical("Previous: " . self::printExceptionMessage($prev));
 				foreach(Utils::printableTrace($prev->getTrace()) as $line){
-					$this->debug("  " . $line, true);
+					$this->critical("  " . $line);
 				}
 			}
 		});
@@ -278,8 +278,10 @@ class MainLogger extends \AttachableThreadedLogger{
 	 * @return void
 	 */
 	public function shutdown(){
-		$this->shutdown = true;
-		$this->notify();
+		$this->synchronized(function() : void{
+			$this->shutdown = true;
+			$this->notify();
+		});
 	}
 
 	/**
@@ -314,13 +316,14 @@ class MainLogger extends \AttachableThreadedLogger{
 		}
 
 		$this->synchronized(function() use ($message, $level, $time) : void{
-			echo Terminal::toANSI($message) . PHP_EOL;
+			Terminal::writeLine($message);
 
 			foreach($this->attachments as $attachment){
 				$attachment->call($level, $message);
 			}
 
 			$this->logStream[] = $time->format("Y-m-d") . " " . TextFormat::clean($message) . PHP_EOL;
+			$this->notify();
 		});
 	}
 
@@ -328,10 +331,11 @@ class MainLogger extends \AttachableThreadedLogger{
 	 * @return void
 	 */
 	public function syncFlushBuffer(){
-		$this->syncFlush = true;
 		$this->synchronized(function() : void{
+			$this->syncFlush = true;
 			$this->notify(); //write immediately
-
+		});
+		$this->synchronized(function() : void{
 			while($this->syncFlush){
 				$this->wait(); //block until it's all been written to disk
 			}
@@ -343,14 +347,17 @@ class MainLogger extends \AttachableThreadedLogger{
 	 */
 	private function writeLogStream($logResource) : void{
 		while($this->logStream->count() > 0){
+			/** @var string $chunk */
 			$chunk = $this->logStream->shift();
 			fwrite($logResource, $chunk);
 		}
 
-		if($this->syncFlush){
-			$this->syncFlush = false;
-			$this->notify(); //if this was due to a sync flush, tell the caller to stop waiting
-		}
+		$this->synchronized(function() : void{
+			if($this->syncFlush){
+				$this->syncFlush = false;
+				$this->notify(); //if this was due to a sync flush, tell the caller to stop waiting
+			}
+		});
 	}
 
 	/**
@@ -365,7 +372,9 @@ class MainLogger extends \AttachableThreadedLogger{
 		while(!$this->shutdown){
 			$this->writeLogStream($logResource);
 			$this->synchronized(function() : void{
-				$this->wait(25000);
+				if(!$this->shutdown && !$this->syncFlush){
+					$this->wait();
+				}
 			});
 		}
 

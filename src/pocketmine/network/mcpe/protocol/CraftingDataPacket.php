@@ -28,8 +28,8 @@ namespace pocketmine\network\mcpe\protocol;
 use pocketmine\inventory\FurnaceRecipe;
 use pocketmine\inventory\ShapedRecipe;
 use pocketmine\inventory\ShapelessRecipe;
-use pocketmine\item\Item;
 use pocketmine\item\ItemFactory;
+use pocketmine\network\mcpe\convert\ItemTranslator;
 use pocketmine\network\mcpe\NetworkBinaryStream;
 use pocketmine\network\mcpe\NetworkSession;
 use pocketmine\network\mcpe\protocol\types\PotionContainerChangeRecipe;
@@ -83,7 +83,6 @@ class CraftingDataPacket extends DataPacket{
 				case self::ENTRY_SHAPELESS_CHEMISTRY:
 					$entry["recipe_id"] = $this->getString();
 					$ingredientCount = $this->getUnsignedVarInt();
-					/** @var Item */
 					$entry["input"] = [];
 					for($j = 0; $j < $ingredientCount; ++$j){
 						$entry["input"][] = $in = $this->getRecipeIngredient();
@@ -92,11 +91,12 @@ class CraftingDataPacket extends DataPacket{
 					$resultCount = $this->getUnsignedVarInt();
 					$entry["output"] = [];
 					for($k = 0; $k < $resultCount; ++$k){
-						$entry["output"][] = $this->getSlot();
+						$entry["output"][] = $this->getItemStackWithoutStackId();
 					}
 					$entry["uuid"] = $this->getUUID()->toString();
 					$entry["block"] = $this->getString();
 					$entry["priority"] = $this->getVarInt();
+					$entry["net_id"] = $this->readGenericTypeNetworkId();
 
 					break;
 				case self::ENTRY_SHAPED:
@@ -113,25 +113,25 @@ class CraftingDataPacket extends DataPacket{
 					$resultCount = $this->getUnsignedVarInt();
 					$entry["output"] = [];
 					for($k = 0; $k < $resultCount; ++$k){
-						$entry["output"][] = $this->getSlot();
+						$entry["output"][] = $this->getItemStackWithoutStackId();
 					}
 					$entry["uuid"] = $this->getUUID()->toString();
 					$entry["block"] = $this->getString();
 					$entry["priority"] = $this->getVarInt();
+					$entry["net_id"] = $this->readGenericTypeNetworkId();
 
 					break;
 				case self::ENTRY_FURNACE:
 				case self::ENTRY_FURNACE_DATA:
-					$inputId = $this->getVarInt();
-					$inputData = -1;
-					if($recipeType === self::ENTRY_FURNACE_DATA){
-						$inputData = $this->getVarInt();
-						if($inputData === 0x7fff){
-							$inputData = -1;
-						}
+					$inputIdNet = $this->getVarInt();
+					if($recipeType === self::ENTRY_FURNACE){
+						[$inputId, $inputData] = ItemTranslator::getInstance()->fromNetworkIdWithWildcardHandling($inputIdNet, 0x7fff);
+					}else{
+						$inputMetaNet = $this->getVarInt();
+						[$inputId, $inputData] = ItemTranslator::getInstance()->fromNetworkIdWithWildcardHandling($inputIdNet, $inputMetaNet);
 					}
 					$entry["input"] = ItemFactory::get($inputId, $inputData);
-					$entry["output"] = $out = $this->getSlot();
+					$entry["output"] = $out = $this->getItemStackWithoutStackId();
 					if($out->getDamage() === 0x7fff){
 						$out->setDamage(0); //TODO HACK: some 1.12 furnace recipe outputs have wildcard damage values
 					}
@@ -140,6 +140,7 @@ class CraftingDataPacket extends DataPacket{
 					break;
 				case self::ENTRY_MULTI:
 					$entry["uuid"] = $this->getUUID()->toString();
+					$entry["net_id"] = $this->readGenericTypeNetworkId();
 					break;
 				default:
 					throw new \UnexpectedValueException("Unhandled recipe type $recipeType!"); //do not continue attempting to decode
@@ -147,15 +148,25 @@ class CraftingDataPacket extends DataPacket{
 			$this->decodedEntries[] = $entry;
 		}
 		for($i = 0, $count = $this->getUnsignedVarInt(); $i < $count; ++$i){
-			$input = $this->getVarInt();
-			$ingredient = $this->getVarInt();
-			$output = $this->getVarInt();
-			$this->potionTypeRecipes[] = new PotionTypeRecipe($input, $ingredient, $output);
+			$inputIdNet = $this->getVarInt();
+			$inputMetaNet = $this->getVarInt();
+			[$input, $inputMeta] = ItemTranslator::getInstance()->fromNetworkId($inputIdNet, $inputMetaNet);
+			$ingredientIdNet = $this->getVarInt();
+			$ingredientMetaNet = $this->getVarInt();
+			[$ingredient, $ingredientMeta] = ItemTranslator::getInstance()->fromNetworkId($ingredientIdNet, $ingredientMetaNet);
+			$outputIdNet = $this->getVarInt();
+			$outputMetaNet = $this->getVarInt();
+			[$output, $outputMeta] = ItemTranslator::getInstance()->fromNetworkId($outputIdNet, $outputMetaNet);
+			$this->potionTypeRecipes[] = new PotionTypeRecipe($input, $inputMeta, $ingredient, $ingredientMeta, $output, $outputMeta);
 		}
 		for($i = 0, $count = $this->getUnsignedVarInt(); $i < $count; ++$i){
-			$input = $this->getVarInt();
-			$ingredient = $this->getVarInt();
-			$output = $this->getVarInt();
+			//TODO: we discard inbound ID here, not safe because netID on its own might map to internalID+internalMeta for us
+			$inputIdNet = $this->getVarInt();
+			[$input, ] = ItemTranslator::getInstance()->fromNetworkId($inputIdNet, 0);
+			$ingredientIdNet = $this->getVarInt();
+			[$ingredient, ] = ItemTranslator::getInstance()->fromNetworkId($ingredientIdNet, 0);
+			$outputIdNet = $this->getVarInt();
+			[$output, ] = ItemTranslator::getInstance()->fromNetworkId($outputIdNet, 0);
 			$this->potionContainerRecipes[] = new PotionContainerChangeRecipe($input, $ingredient, $output);
 		}
 		$this->cleanRecipes = $this->getBool();
@@ -187,12 +198,13 @@ class CraftingDataPacket extends DataPacket{
 		$results = $recipe->getResults();
 		$stream->putUnsignedVarInt(count($results));
 		foreach($results as $item){
-			$stream->putSlot($item);
+			$stream->putItemStackWithoutStackId($item);
 		}
 
 		$stream->put(str_repeat("\x00", 16)); //Null UUID
 		$stream->putString("crafting_table"); //TODO: blocktype (no prefix) (this might require internal API breaks)
 		$stream->putVarInt(50); //TODO: priority
+		$stream->writeGenericTypeNetworkId($pos); //TODO: ANOTHER recipe ID, only used on the network
 
 		return CraftingDataPacket::ENTRY_SHAPELESS;
 	}
@@ -211,26 +223,30 @@ class CraftingDataPacket extends DataPacket{
 		$results = $recipe->getResults();
 		$stream->putUnsignedVarInt(count($results));
 		foreach($results as $item){
-			$stream->putSlot($item);
+			$stream->putItemStackWithoutStackId($item);
 		}
 
 		$stream->put(str_repeat("\x00", 16)); //Null UUID
 		$stream->putString("crafting_table"); //TODO: blocktype (no prefix) (this might require internal API breaks)
 		$stream->putVarInt(50); //TODO: priority
+		$stream->writeGenericTypeNetworkId($pos); //TODO: ANOTHER recipe ID, only used on the network
 
 		return CraftingDataPacket::ENTRY_SHAPED;
 	}
 
 	private static function writeFurnaceRecipe(FurnaceRecipe $recipe, NetworkBinaryStream $stream) : int{
-		$stream->putVarInt($recipe->getInput()->getId());
-		$result = CraftingDataPacket::ENTRY_FURNACE;
-		if(!$recipe->getInput()->hasAnyDamageValue()){ //Data recipe
-			$stream->putVarInt($recipe->getInput()->getDamage());
-			$result = CraftingDataPacket::ENTRY_FURNACE_DATA;
+		$input = $recipe->getInput();
+		if($input->hasAnyDamageValue()){
+			[$netId, ] = ItemTranslator::getInstance()->toNetworkId($input->getId(), 0);
+			$netData = 0x7fff;
+		}else{
+			[$netId, $netData] = ItemTranslator::getInstance()->toNetworkId($input->getId(), $input->getDamage());
 		}
-		$stream->putSlot($recipe->getResult());
+		$stream->putVarInt($netId);
+		$stream->putVarInt($netData);
+		$stream->putItemStackWithoutStackId($recipe->getResult());
 		$stream->putString("furnace"); //TODO: blocktype (no prefix) (this might require internal API breaks)
-		return $result;
+		return CraftingDataPacket::ENTRY_FURNACE_DATA;
 	}
 
 	/**
@@ -260,7 +276,7 @@ class CraftingDataPacket extends DataPacket{
 		$writer = new NetworkBinaryStream();
 		$counter = 0;
 		foreach($this->entries as $d){
-			$entryType = self::writeEntry($d, $writer, $counter++);
+			$entryType = self::writeEntry($d, $writer, ++$counter);
 			if($entryType >= 0){
 				$this->putVarInt($entryType);
 				$this->put($writer->getBuffer());
@@ -272,9 +288,12 @@ class CraftingDataPacket extends DataPacket{
 		}
 		$this->putUnsignedVarInt(count($this->potionTypeRecipes));
 		foreach($this->potionTypeRecipes as $recipe){
-			$this->putVarInt($recipe->getInputPotionType());
+			$this->putVarInt($recipe->getInputItemId());
+			$this->putVarInt($recipe->getInputItemMeta());
 			$this->putVarInt($recipe->getIngredientItemId());
-			$this->putVarInt($recipe->getOutputPotionType());
+			$this->putVarInt($recipe->getIngredientItemMeta());
+			$this->putVarInt($recipe->getOutputItemId());
+			$this->putVarInt($recipe->getOutputItemMeta());
 		}
 		$this->putUnsignedVarInt(count($this->potionContainerRecipes));
 		foreach($this->potionContainerRecipes as $recipe){

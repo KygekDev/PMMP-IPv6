@@ -36,7 +36,10 @@ class TaskScheduler{
 	/** @var bool */
 	private $enabled = true;
 
-	/** @var ReversePriorityQueue<TaskHandler> */
+	/**
+	 * @var ReversePriorityQueue
+	 * @phpstan-var ReversePriorityQueue<int, TaskHandler>
+	 */
 	protected $queue;
 
 	/** @var TaskHandler[] */
@@ -174,7 +177,7 @@ class TaskScheduler{
 				continue;
 			}
 			$task->run($this->currentTick);
-			if($task->isRepeating()){
+			if(!$task->isCancelled() && $task->isRepeating()){
 				$task->setNextRun($this->currentTick + $task->getPeriod());
 				$this->queue->insert($task, $this->currentTick + $task->getPeriod());
 			}else{

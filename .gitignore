@@ -16,7 +16,9 @@ server.lock
 /phpstan.neon
 
 # Common IDEs
-.idea/
+.idea/*
+!.idea/codeStyles/
+!.idea/fileTemplates/
 nbproject/*
 
 # Windows image file caches
@@ -41,3 +43,10 @@ test_data/*
 
 # Doxygen
 Documentation/*
+
+# PHPUnit
+/.phpunit.result.cache
+
+# php-cs-fixer
+/.php_cs.cache
+/.php-cs-fixer.cache
