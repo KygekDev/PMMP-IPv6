@@ -1488,7 +1488,7 @@ class Server{
 			}
 
 			$this->logger->info($this->getLanguage()->translateString("pocketmine.server.networkStart", [$this->getIp(), $this->getPort()]));
-			$this->logger->info($this->getLanguage()->translateString("pocketmine.server.networkStart", ["[" . $this->getIpv6() . "]", $this->getPortv6()]));
+			$this->logger->info($this->getLanguage()->translateString("pocketmine.server.networkStart", ["[" . $this->getIpv6() . "]", $this->getPortv6()]) . " (IPv6)");
 			define("BOOTUP_RANDOM", random_bytes(16));
 			$this->serverID = Utils::getMachineUniqueId($this->getIp() . $this->getPort());
 
