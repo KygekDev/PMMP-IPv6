@@ -28,6 +28,7 @@ declare(strict_types=1);
 namespace pocketmine\utils;
 
 use DaveRandom\CallbackValidator\CallbackType;
+use pocketmine\ThreadManager;
 use function array_combine;
 use function array_map;
 use function array_reverse;
