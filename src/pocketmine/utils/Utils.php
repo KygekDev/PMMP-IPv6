@@ -28,6 +28,7 @@ declare(strict_types=1);
 namespace pocketmine\utils;
 
 use DaveRandom\CallbackValidator\CallbackType;
+use pocketmine\ThreadManager;
 use function array_combine;
 use function array_map;
 use function array_reverse;
@@ -326,10 +327,16 @@ class Utils{
 
 	/**
 	 * @deprecated
-	 * @see Process::getThreadCount()
 	 */
 	public static function getThreadCount() : int{
-		return Process::getThreadCount();
+		if(Utils::getOS() === "linux" or Utils::getOS() === "android"){
+			if(preg_match("/Threads:[ \t]+([0-9]+)/", file_get_contents("/proc/self/status"), $matches) > 0){
+				return (int) $matches[1];
+			}
+		}
+		//TODO: more OS
+
+		return count(ThreadManager::getInstance()->getAll()) + 4; //RakLib (IPv4) + RakLib (IPv6) + MainLogger + Main Thread
 	}
 
 	public static function getCoreCount(bool $recalculate = false) : int{
