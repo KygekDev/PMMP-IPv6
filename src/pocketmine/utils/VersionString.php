@@ -72,7 +72,7 @@ class VersionString{
 	}
 
 	public function getFullVersion(bool $build = false) : string{
-		$retval = $this->baseVersion;
+		$retval = $this->baseVersion . "-ipv6"; // Tell users and plugins this is an alternative PocketMine-MP with IPv6 support
 		if($this->development){
 			$retval .= "+dev";
 			if($build and $this->build > 0){
