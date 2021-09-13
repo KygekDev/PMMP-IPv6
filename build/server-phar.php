@@ -130,8 +130,7 @@ function main() : void{
 		exit(1);
 	}
 	if(file_exists(dirname(__DIR__) . '/vendor/phpunit')){
-		echo "Remove Composer dev dependencies before building (composer install --no-dev)" . PHP_EOL;
-		exit(1);
+		echo "Will build with Composer dev dependencies, build size will increase significantly" . PHP_EOL;
 	}
 
 	$opts = getopt("", ["out:", "git:"]);
