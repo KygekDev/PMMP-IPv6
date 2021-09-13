@@ -115,7 +115,16 @@ function buildPhar(string $pharPath, string $basePath, array $includedPaths, arr
 	yield "Added $count files";
 
 	if($compression !== null){
-		yield "Compressing files...";
+		switch($compression){
+			case \Phar::GZ:
+				yield "Compressing files with GZIP compression...";
+				break;
+			case \Phar::BZ2:
+				yield "Compressing files with BZIP2 compression...";
+				break;
+			default:
+				yield "Compressing files with unknown compression...";
+		}
 		$phar->compressFiles($compression);
 		yield "Finished compression";
 	}
@@ -166,7 +175,7 @@ __HALT_COMPILER();
 STUB
 ,
 		\Phar::SHA1,
-		\Phar::GZ
+		extension_loaded("bz2") ? \Phar::BZ2 : \Phar::GZ // PMMP binaries doesn't enable BZIP2 extension by default so most people will use GZIP compression anyway
 	) as $line){
 		echo $line . PHP_EOL;
 	}
