@@ -288,6 +288,7 @@ jobs:
 
   build-phar:
     name: Build PocketMine-MP.phar
+    needs: [build-php, phpstan, phpunit, integration, codestyle]
     runs-on: ${{ matrix.image }}
     if: ${{ github.event_name == 'push' }}
 
@@ -332,6 +333,9 @@ jobs:
           key: "composer-v2-cache-${{ matrix.php }}-${{ hashFiles('./composer.lock') }}"
           restore-keys: |
             composer-v2-cache-
+
+      - name: Minify JSON files
+        run: php src/pocketmine/resources/vanilla/.minify_json.php
 
       - name: Install Composer dependencies and build PHAR
         run: php composer.phar make-server
