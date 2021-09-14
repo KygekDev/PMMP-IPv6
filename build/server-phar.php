@@ -27,6 +27,7 @@ use pocketmine\utils\Git;
 use function array_map;
 use function count;
 use function dirname;
+use function extension_loaded;
 use function file_exists;
 use function getcwd;
 use function getopt;
