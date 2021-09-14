@@ -334,6 +334,9 @@ jobs:
           restore-keys: |
             composer-v2-cache-
 
+      - name: Preprocess source code
+        run: php build/preprocessor/PreProcessor.php --path=src --multisize
+
       - name: Minify JSON files
         run: php src/pocketmine/resources/vanilla/.minify_json.php
 
