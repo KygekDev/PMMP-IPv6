@@ -290,7 +290,7 @@ jobs:
     name: Build PocketMine-MP.phar
     needs: [build-php, phpstan, phpunit, integration, preprocessor, codestyle]
     runs-on: ${{ matrix.image }}
-    if: ${{ github.event_name == 'push' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/stable' }}
 
     strategy:
       fail-fast: false
