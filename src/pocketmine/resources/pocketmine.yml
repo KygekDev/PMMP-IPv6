@@ -20,7 +20,7 @@ settings:
   async-workers: auto
   #Whether to allow running development builds. Dev builds might crash, break your plugins, corrupt your world and more.
   #It is recommended to avoid using development builds where possible.
-  enable-dev-builds: false
+  enable-dev-builds: true
 
 memory:
   #Global soft memory limit in megabytes. Set to 0 to disable
@@ -151,12 +151,12 @@ anonymous-statistics:
   host: stats.pocketmine.net
 
 auto-updater:
-  enabled: true
+  enabled: false
   on-update:
     warn-console: true
     warn-ops: true
   #Can be development, alpha, beta or stable.
-  preferred-channel: stable
+  preferred-channel: beta
   #If using a development version, it will suggest changing the channel
   suggest-channels: true
   host: update.pmmp.io
