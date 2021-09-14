@@ -288,7 +288,7 @@ jobs:
 
   build-phar:
     name: Build PocketMine-MP.phar
-    needs: [build-php, phpstan, phpunit, integration, codestyle]
+    needs: [build-php, phpstan, phpunit, integration, preprocessor, codestyle]
     runs-on: ${{ matrix.image }}
     if: ${{ github.event_name == 'push' }}
 
